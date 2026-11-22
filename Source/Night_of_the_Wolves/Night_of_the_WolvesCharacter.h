@@ -10,6 +10,13 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class UAnimInstance;
+class UGroomBindingAsset;
+class UGroomComponent;
+class USkeletalMesh;
+class USkinnedMeshComponent;
+class UStaticMesh;
+class UStaticMeshComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -30,6 +37,45 @@ class ANight_of_the_WolvesCharacter : public ACharacter
 	/** Follow camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
+
+	UPROPERTY(VisibleAnywhere, Category="Max")
+	TObjectPtr<USkeletalMeshComponent> Face;
+
+	UPROPERTY(VisibleAnywhere, Category="Max")
+	TObjectPtr<USkeletalMeshComponent> Outfit;
+
+	UPROPERTY(VisibleAnywhere, Category="Max")
+	TObjectPtr<UStaticMeshComponent> Hair;
+
+	UPROPERTY(VisibleAnywhere, Category="Max")
+	TObjectPtr<UGroomComponent> Fringe;
+
+	UPROPERTY(VisibleAnywhere, Category="Max")
+	TObjectPtr<UGroomComponent> Brows;
+
+	UPROPERTY(EditDefaultsOnly, Category="Max")
+	TObjectPtr<UGroomBindingAsset> MaxFringeBinding;
+
+	UPROPERTY(EditDefaultsOnly, Category="Max")
+	TObjectPtr<UGroomBindingAsset> MaxBrowBinding;
+
+	UPROPERTY(EditDefaultsOnly, Category="Max")
+	TObjectPtr<USkeletalMesh> MaxBody;
+
+	UPROPERTY(EditDefaultsOnly, Category="Max")
+	TObjectPtr<USkeletalMesh> MaxHead;
+
+	UPROPERTY(EditDefaultsOnly, Category="Max")
+	TObjectPtr<USkeletalMesh> MaxOutfit;
+
+	UPROPERTY(EditDefaultsOnly, Category="Max")
+	TObjectPtr<UStaticMesh> MaxHair;
+
+	UPROPERTY(EditDefaultsOnly, Category="Max")
+	TSubclassOf<UAnimInstance> MaxLocomotion;
+
+	UPROPERTY(EditDefaultsOnly, Category="Max")
+	TSubclassOf<UAnimInstance> MaxFaceAnimation;
 	
 protected:
 
@@ -56,6 +102,9 @@ public:
 
 protected:
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void BeginPlay() override;
+
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
@@ -68,6 +117,9 @@ protected:
 	void Look(const FInputActionValue& Value);
 
 public:
+
+	/** Keep the clothes and head in the captured body pose during the creek swing. */
+	void SetHangingAppearance(USkinnedMeshComponent* HangingBody);
 
 	/** Handles move inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")

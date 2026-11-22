@@ -6,25 +6,26 @@ A third-person survival game set outdoors in a forest at night. The unnamed prot
 
 The user supplied [this visual reference](https://media.easy-peasy.ai/b535d61a-ed9a-48fb-90d0-329997e25ef5/4e7998ac-d2dd-4dd7-9bd7-4ffb57562189.png): realistic dark woodland, desaturated blue-gray moonlight, mist, tangled bare branches, mossy ground, and a weathered stone cabin. Use it as an atmospheric and visual-style reference; the established opening still has one cabin window, and incidental figures in the image are not game requirements.
 
-## Opening encounter: intended events
+For the trail, the user also supplied [a reference](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRnGPlMPUJ7rfeaCfjlPE4JIdZE3ZlofdCGczORUhglChtq_4RN8vHHkJc&s=10) showing uneven, mossy stone in a dense moonlit conifer forest. The aim is a lifelike path in a close, enclosing mix of trees.
 
-- Max starts facing down the trail. If he fails to run, wolves reach him after five seconds; he dies and restarts at the same spot. Running down the trail keeps him ahead and brings him to a cabin.
-- The cabin has a door, one window, and a shovel beside it. Approaching the door offers a knock prompt using the appropriate action binding. An unprepared knock brings out an angry, drunk hermit, who grunts in surprise and shoots Max with a shotgun. Max dies and restarts. Waiting five seconds at the cabin also lets the wolves catch him.
-- Approaching the shovel offers a take prompt. Taking it equips it by default. With the shovel, Max can dig a hole a little way from the door before the wolves arrive. He must approach the door without falling in. After he knocks, the hermit runs out to shoot him but falls into the hole. Max can enter the cabin and shut the door to keep the wolves away for a while.
-- Every wolf capture uses the same quick sequence: a scary red-eyed wolf lunges toward the camera with “You died” over the screen. The hermit's grunt and shotgun distinguish that death.
+Max wears a dark blue trail jacket with ochre shoulders and elbows, a gray shirt, dark jeans and oxblood sneakers. His brown fringe, light stubble and lean build follow the supplied runner photograph. [Visual reference](https://as2.ftcdn.net/jpg/02/06/28/07/1000_F_206280746_q9eKQ3nva9cuhLm3Um5fA8zkFZPI0drg.jpg)
 
-The cabin is temporary shelter, not the game's ultimate victory. Further encounters are to be developed later.
+## The Moonlit Trail
 
-## Open decisions and earlier proposals
+A fresh trail opens with “Night of the Wolves” and “A Stafford Laboratory Production.” The title dissolves into the lead wolf’s view from the start of the path. Its stride lifts the camera over the bends and its breathing fills the foreground. As Max comes into reach the view settles into his third-person camera. Control and his five-second lead begin together.
 
-- The exact pursuit timing during pickup, digging, moving around the hole, knocking, the hermit's response, and entering and closing the door is not settled. The complete solution must be feasible and fair; do not silently suspend or reset pursuit during interactions.
-- The consequence of Max falling into the hole is unspecified. A prepared pit with removable ground and collision was suggested as an implementation, not mandated.
-- A checkpoint upon trapping the hermit, entering the cabin, and closing the door was proposed but not confirmed. Likewise, the earlier discussion proposed that an open door or closing it from outside does not provide shelter.
-- The window's role is unspecified; it may initially be non-interactive. Controls should be configurable and prompts reflect the active binding; “A” and “X” were examples.
-- A progress-based pursuit model was proposed for initial prototyping: stopping or failing to make escape progress lets wolves close in, so running against an obstacle does not grant permanent safety. Visible pack behavior can be developed later.
+The first leg runs from the opening chase to the bend beyond the bandit. The five encounters, equipment rules, checkpoint snapshots and failure cases come from [the first-leg brief](../mynotes/NIGHT_OF_THE_WOLVES_FIRST_LEG.md). It replaces the earlier prototype ending at the cottage.
 
-## M3 prototype decisions to playtest
+- **Trail.** Max starts with empty hands and a five-second lead once control is available. One wolf leads the pursuit. Two others trot to either side as the pack closes. Moonlight picks out the pale muzzle and silver-tipped cheek ruff against a dark brow, echoing the wolf on the death screen. On capture, a wolf springs onto Max before the death image appears. Running through a gap in fallen timber buys time to investigate the cottage.
+- **Doorstep.** The glowing window and an angry voice warn of the occupant. When Max knocks, the hermit runs outside with his shotgun and plants his feet on the rotten cover. His creased felt hat, long gray beard and work overalls take their cue from Popcorn Sutton. Max has time to recognize him and see where he stands before the shot. Clearing those same timbers with the shovel exposes the hollow under his route. Once the hermit falls in, Max can jump across, enter and bar the door.
+- **Refuge.** Scratching and impacts build against the barred door. The table supplies a rope and a sack of gold. The pack waits just outside, and Max can see it by opening the door. Crossing that threshold without the burning firebrand in hand triggers an immediate attack. Holding the flame makes room to jump the hollow and get clear of the pack. Max can return to the hearth to relight it.
+- **Crossing.** The trail reaches a washed-out bridge. Equipping the rope extinguishes the firebrand. Cast the rope over the leaning limb, grip it and release over the far bank. Wolves hesitate, enter the current downstream and climb out behind Max.
+- **Robbery.** The bandit demands Max's possessions. Present the gold, turn to the patch behind Max and toss it. Run while the bandit collects the spilled coins and the pack closes on him. The leg ends beyond the next bend while it is still night.
 
-Taking and digging are immediate placeholder actions; the wolves keep moving during them and during the hermit's reaction. Max can fall into the physical pit, where pursuit still applies; no separate fall-death rule is implemented. After the hermit falls, closing the door from inside provides temporary shelter and ends pursuit for this opening prototype. It does not establish a persistent checkpoint or complete the full game. These are provisional choices, not settled pacing or checkpoint rules.
+Ordinary pickups add to an inventory of unlimited capacity. One item can be equipped. The paged inventory wheel pauses the simulation. Confirming a change away from a burning firebrand extinguishes it. Canceling keeps both the item and flame. Only a successful environmental use can spend the rope or gold.
 
-Following the user's playtest, picking up the shovel grants ten additional seconds of wolf lead once per attempt. The wolves continue pursuing, and the extra allowance counts down even while Max moves. This is a temporary pacing adjustment.
+Checkpoints fall at the start, cottage approach, barred door, near bank, far bank and escape bend. Each checkpoint captures the items actually carried. The barred-door checkpoint restores the hearth brand and the pack outside. Older saves that already passed the cottage retain their recorded inventory. The shovel and spent firebrand carry forward at the end of a new run.
+
+## Tuning and later work
+
+The five-second opening is a design constraint. Exterior investigation time, door endurance, the pack's hesitation around fire, swing release timing and the bandit's distraction are playtest values. The amount of guidance an unfamiliar player needs at the creek and after the robbery is an open question. Dawn, the next use for the shovel or firebrand, and the next stretch of trail belong to later legs.

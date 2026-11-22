@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="2560" height="1440" viewBox="0 0 2560 1440">
+  <title>Night of the Wolves</title>
+  <desc>A Stafford Laboratory Production</desc>
+  <defs>
+    <!-- Individually drawn wedge-serif capitals. The principal downstrokes dip
+         below the baseline; fine entry strokes catch the cold upper light. -->
+    <path id="N" d="M0 100 8 96 8 8 1 2 0 0 20 0 70 78 70 6 59 1 59 0 83 0 83 1 76 6 76 109 71 105 14 17 14 95 26 99 26 100Z"/>
+    <path id="I" d="M2 0 32 0 32 1 23 5 23 94 32 99 32 100 0 100 0 99 9 95 10 6 2 1Z"/>
+    <path id="G" d="M84 6 84 31 82 31 Q73 4 50 4 C27 4 17 25 17 53 C17 81 30 97 51 97 Q63 97 69 90 L69 66 57 61 57 60 92 60 92 61 83 67 83 92 Q64 102 47 102 C17 102 1 82 1 55 C1 25 22 -1 51 -1 Q66 -1 77 5 L81 2Z"/>
+    <path id="H" d="M0 0 31 0 31 1 22 5 22 46 64 46 64 5 56 1 56 0 87 0 87 1 78 5 78 95 88 99 88 100 54 100 54 99 64 95 64 51 22 51 22 95 32 99 32 100 0 100 0 99 8 95 9 6 0 1Z"/>
+    <path id="T" d="M0 -3 Q17 1 39 0 Q66 1 81 -3 L83 25 81 24 72 6 48 5 47 94 61 99 61 100 21 100 21 99 33 95 34 5 11 6 1 25 -1 26Z"/>
+    <path id="W" d="M-4 -3 31 0 30 2 22 5 47 79 61 36 51 7 43 1 43 0 77 0 76 2 67 7 91 79 114 7 101 2 101 0 129 -2 128 0 121 8 88 108 83 118 81 105 64 47 39 114 37 108 7 12 -2 2Z"/>
+    <path id="O" fill-rule="evenodd" d="M49 -2 C78 -3 97 20 97 50 C96 80 77 102 49 104 C18 104 0 81 0 53 C0 23 20 1 49 -2ZM46 3 C26 5 16 26 16 51 C16 79 29 99 52 98 C71 97 82 78 81 53 C80 24 67 2 46 3Z"/>
+    <path id="L" d="M0 0 33 0 33 1 22 6 22 95 49 94 Q60 93 69 71 L71 71 66 103 55 100 0 100 0 99 9 95 9 6 0 1Z"/>
+    <path id="V" d="M-3 -1 31 0 30 2 21 6 46 79 70 6 58 1 58 0 85 -1 85 1 77 7 42 109 37 120 35 108 6 10 -3 1Z"/>
+    <path id="E" d="M0 0 62 0 66 -3 68 26 66 26 58 6 21 5 21 44 47 43 52 32 54 32 53 63 52 63 47 49 21 49 21 95 51 94 Q62 93 70 71 L72 71 67 103 57 100 0 100 0 99 8 94 9 6 0 1Z"/>
+    <path id="S" d="M65 5 66 31 64 31 C59 14 50 3 36 4 C21 5 16 14 16 24 C16 34 24 41 41 48 C61 57 70 67 69 81 C67 97 55 105 36 105 Q22 105 10 99 L5 102 2 73 4 73 C10 91 21 100 37 100 C51 100 59 93 58 83 C57 73 49 67 30 58 C11 49 4 39 4 27 C5 9 19 -1 38 -1 Q51 -1 60 5 L64 2Z"/>
+    <linearGradient id="silver" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="100">
+      <stop offset="0" stop-color="#eee7d5"/><stop offset=".43" stop-color="#ece8df"/><stop offset=".60" stop-color="#d3d9d5"/><stop offset="1" stop-color="#a3b1af"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#silver)">
+    <g transform="translate(893 412) scale(1.42)" aria-label="Night">
+      <use xlink:href="#N"/>
+      <g transform="translate(92 10) scale(.89)">
+        <use xlink:href="#I"/>
+        <use xlink:href="#G" x="43"/>
+        <use xlink:href="#H" x="146"/>
+        <use xlink:href="#T" x="245"/>
+      </g>
+    </g>
+    <g transform="translate(660 596) scale(2.33 2.16)" aria-label="Wolves">
+      <use xlink:href="#W"/>
+      <g transform="translate(136 6) scale(.94)">
+        <use xlink:href="#O"/>
+        <use xlink:href="#L" x="109"/>
+        <use xlink:href="#V" x="191"/>
+        <use xlink:href="#E" x="287"/>
+        <use xlink:href="#S" x="368"/>
+      </g>
+    </g>
+  </g>
+  <text x="1578" y="535" fill="#c9bfac" text-anchor="middle" font-family="Noto Serif Display" font-style="italic" font-size="76">of the</text>
+  <text x="1280" y="963" fill="#d4d0c2" text-anchor="middle" font-family="Noto Serif Display" font-size="43" letter-spacing="3.2">A Stafford Laboratory Production</text>
+</svg>

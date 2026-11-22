@@ -1,43 +1,64 @@
 # Project instructions
 
-- This is a Linux Unreal Engine C++ project. The source-built engine is `~/UnrealEngine-5.9-preview-2` (UE 5.9 Preview 2); the editor is `Engine/Binaries/Linux/UnrealEditor` beneath it. Consult the local engine source and headers when checking uncertain APIs.
-- Read `docs/GAME_DESIGN.md` for the intended experience and unresolved decisions, and `docs/MILESTONES.md` for the proposed sequence. Do not treat suggestions from the earlier conversation as confirmed requirements.
-- Work in small playable increments. Prefer C++ for gameplay rules and editor-configurable properties, with Unreal assets/Blueprints for presentation where appropriate. Use Unreal tools or editor APIs for binary assets, and document any manual editor steps.
-- The startup map is `/Game/NightOfTheWolves/Maps/M1_Trail`; the template map remains at `/Game/ThirdPerson/Lvl_ThirdPerson`. `Scripts/create_m1_map.py` documents creation of the initial blockout and refuses to overwrite an existing map; `Scripts/upgrade_m2_map.py`, `Scripts/upgrade_m3_map.py`, `Scripts/upgrade_m4_presentation.py`, and `Scripts/refine_m4_forest.py` record later editor changes. These are editor-only, not runtime gameplay.
-- Preserve the working Linux build process below. Identify placeholders, and report compilation, launch, gameplay checks, and visual review separately according to what was actually verified. Record meaningful playtest results in `docs/PLAYTEST.md`.
+- Use the local Linux source build of UE 5.9 Preview 2 at `~/UnrealEngine-5.9-preview-2`. Check unfamiliar APIs against its source and headers.
+- Read `docs/GAME_DESIGN.md`, `docs/MILESTONES.md` and `mynotes/NIGHT_OF_THE_WOLVES_FIRST_LEG.md` for the intended progression. The first leg continues through the creek and the bandit to an escape checkpoint. The forest transcript provides art direction. Current authoring choices and sources are in `docs/FOREST.md`.
+- Work in playable increments. Keep gameplay rules in C++ and expose tuning values where appropriate. Use Unreal Editor operations for binary assets. Record meaningful verification in `docs/PLAYTEST.md`, including the build configuration and whether input, graphics or audio were exercised.
+- Use the saved startup map `/Game/NightOfTheWolves/Maps/M1_Trail` and its `WolfTrailGameMode`. The template map remains at `/Game/ThirdPerson/Lvl_ThirdPerson`. Keep route geometry, pursuit spline, cottage interactions and creek landing aligned when editing the level.
+- The saved assets are ready to play. Editor Python imports and dresses assets. The packaged game uses cooked assets, baked foliage, a PCG graph and native gameplay code.
 
-## Known packaging command
-
-The user reports this command successfully built, cooked, packaged, and archived the default project, and that the resulting Linux executable ran locally. It has not yet been independently rerun in this session.
+## Build and open the editor
 
 ```sh
 export UE_ROOT="$HOME/UnrealEngine-5.9-preview-2"
-UE_PROJECT="$HOME/Documents/Unreal Projects/Night_of_the_Wolves/Night_of_the_Wolves.uproject"
-UE_OUTPUT="$HOME/Builds/NightOfTheWolves-Linux"
+PROJECT_DIR="$HOME/Documents/Unreal Projects/Night_of_the_Wolves"
+UE_PROJECT="$PROJECT_DIR/Night_of_the_Wolves.uproject"
+
+"$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh" Night_of_the_WolvesEditor Linux Development \
+  -Project="$UE_PROJECT" -WaitMutex
+"$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$UE_PROJECT"
+```
+
+Press Play in the startup map. `BP_Max` inherits third-person movement, camera and input from the template. His locomotion Blueprint animates the MetaHuman skeleton, and the game C++ classes drive equipment, sprint, interactions and the rope swing. See [Max authoring](docs/MAX.md) for the Creator asset and the cooked character assembly.
+
+## Package and launch on Linux
+
+After setting the variables above, build, cook and archive the first leg with the project's established UAT command.
+
+```sh
+UE_OUTPUT="$PROJECT_DIR/Saved/MoonlitTrail-Linux"
 mkdir -p "$UE_OUTPUT"
 "$UE_ROOT/Engine/Build/BatchFiles/RunUAT.sh" BuildCookRun \
   -project="$UE_PROJECT" -noP4 -platform=Linux -clientconfig=Shipping \
   -build -cook -stage -pak -package -archive -archivedirectory="$UE_OUTPUT" \
   -utf8output -unattended
+
+"$UE_OUTPUT/Linux/Night_of_the_Wolves.sh"
 ```
 
-The archive directory is outside the project workspace; access may require permission in the active environment.
+Set `UE_OUTPUT="$HOME/Builds/NightOfTheWolves-Linux"` to use the original external archive location. Current playtest instructions use `Saved/MoonlitTrail-Linux`.
 
-## Editor build and launch
+## Verify a gameplay change
+
+The editor can run the physical route headlessly. The clean run begins with empty hands and uses normal movement, interactions and equipment rules. Check the pass message and process exit status.
 
 ```sh
-export UE_ROOT="$HOME/UnrealEngine-5.9-preview-2"
-UE_PROJECT="$HOME/Documents/Unreal Projects/Night_of_the_Wolves/Night_of_the_Wolves.uproject"
-"$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh" Night_of_the_WolvesEditor Linux Development -Project="$UE_PROJECT" -WaitMutex
-"$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$UE_PROJECT"
+"$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$UE_PROJECT" \
+  /Game/NightOfTheWolves/Maps/M1_Trail -game -unattended -nop4 -nullrhi -nosound \
+  -UseFixedTimeStep -FPS=60 -ExecCmds='t.MaxFPS 0' \
+  -FirstLegTest -FirstLegClean -abslog=/tmp/wolves-clean.log
+rg 'FIRST LEG CLEAN PASSED|TEST FAILED' /tmp/wolves-clean.log
 ```
 
-In the editor, open the M1 startup map and press Play. The saved map already assigns `WolfTrailGameMode`; no manual setup is intended. The third-person template Blueprint supplies movement, camera, and input. UE's source build may write build logs and caches outside this workspace.
+For the full recovery route, omit `-FirstLegClean`. Add `-DoorwayTest` to exercise empty-handed and extinguished-brand departures, both CP2 retries, and then a successful exit with the flame. The earlier `-OmitFirebrand` flag also exercises this revised rule. Use `-CottageRecoveryTest` in place of the first-leg flags to check the unprepared knock, inventory restoration and door breach. These drivers are excluded from Shipping and isolate test progress from the live checkpoint. For an ordinary unsaved QA session, use `-NoTrailSave`. See the playtest record for the fresh-process disk check and manual cases.
 
-The M1 verification package was archived to `Saved/M1-Linux/Linux`. Launch it with `"$HOME/Documents/Unreal Projects/Night_of_the_Wolves/Saved/M1-Linux/Linux/Night_of_the_Wolves.sh"`. It is a local build artifact, not a replacement for the user's usual archive directory.
+On a fresh trail, run the editor game with `-NoTrailSave` and `-ExecCmds="t.MaxFPS 0,Wolf.TestOpening"` using the fixed-step flags above. Check for `OPENING TEST PASSED` and exit code 0. The opening driver watches the title dissolve, camera travel, return to Max, full idle lead and first retry. The route and cottage regression drivers start directly in gameplay.
 
-The newer M2 blockout package is in `Saved/M2-Linux/Linux`, with the same launcher name. It includes the floor correction and cabin draft; see `docs/PLAYTEST.md` for outstanding checks.
+For art changes, inspect real rendered views from the player camera. A renderer-backed development run with `-FirstLegTest -FirstLegClean -FirstLegPhotos` captures encounter views under `Saved/FirstLegReview`. Verify packaged startup and input separately.
 
-The M3 package is built to `Saved/M3-Linux/Linux`. The non-Shipping `-M3SelfTest` option drives the physical prototype route headlessly; `-M3ShovelTimeTest` checks the pickup bonus and capture timing. They invoke actions programmatically and do not replace a keyboard or visual playtest.
+Use `-CottageRecoveryTest -CottagePhotos` to capture the armed run, the aim on the intact boards, and the fall into the open hollow. Use `-FirstLegTest -DoorwayTest -EncounterPhotos -WolfCapturePhotos` for the waiting pack, flame retreat and wolf pounce under `Saved/EncounterReview`. Add `-HermitPortrait` to the cottage photo run for a closer look at the beard and eyes in the porch light. On a fresh trail, the development console command `Wolf.TestCapture` checks impact, death-card order and both retry paths.
 
-The M4 presentation prototype is packaged under `Saved/M4-Linux/Linux`; see `docs/PLAYTEST.md` for the review status and `Art/Source/Presentation/SOURCES.md` for asset sources and licensing.
+## Earlier prototypes
+
+The initial template and milestone packages established the Linux build process. Historical archives include `M1-Linux`, `M2-Linux`, `M3-Linux`, `M4-Linux`, `Winding-Linux` and `Forest-Linux` under the project’s `Saved` directory. Their acceptance results and former controls are retained in the historical portion of `docs/PLAYTEST.md`.
+
+`Scripts/create_m1_map.py` records the original editable blockout and refuses to overwrite the map. The M2–M4 upgrade scripts, winding-approach script and early forest scripts record later iterations. For current procedural foliage and sky work, use the workflow in `docs/FOREST.md`.

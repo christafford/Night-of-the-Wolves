@@ -17,6 +17,49 @@ UCLASS(abstract)
 class ANight_of_the_WolvesPlayerController : public APlayerController
 {
 	GENERATED_BODY()
+
+public:
+	enum class EOverlay { None, Inventory, Pause, ConfirmNew };
+	static constexpr int32 SlotsPerPage = 6;
+	EOverlay GetOverlay() const { return Overlay; }
+	int32 WheelPage() const { return Selection / SlotsPerPage; }
+	int32 Highlight() const { return Selection; }
+	bool UsingPad() const { return bUsingPad; }
+	const FString& ItemNotice() const { return Notice; }
+	float NoticeUntil = 0.f;
+	void UpdatePointerSelection();
+#if !UE_BUILD_SHIPPING
+	void RequestTestEquip(FName Item);
+	bool bTestSelecting = false;
+#endif
+
+
+private:
+	EOverlay Overlay = EOverlay::None;
+	int32 Selection = 0;
+	bool bUsingPad = false;
+	bool bTrackCursor = false;
+	FVector2D LastMouse = FVector2D::ZeroVector;
+	float NormalSpeed = 0.f;
+	FString Notice;
+	void MenuKey(FKey Key);
+	void PageForward();
+	void PageBack();
+	void Previous();
+	void Next();
+	void Confirm();
+	void Cancel();
+	void ToggleWheel();
+	void TogglePause();
+	void Interact();
+	void UseItem();
+	void SprintStart();
+	void SprintStop();
+	void Retry();
+	void OpenOverlay(EOverlay NewOverlay);
+	void CloseOverlay();
+	void ShiftSelection(int32 Change);
+	void ChangePage(int32 Direction);
 	
 protected:
 
@@ -45,6 +88,7 @@ protected:
 
 	/** Input mapping context setup */
 	virtual void SetupInputComponent() override;
+	virtual void BuildInputStack(TArray<UInputComponent*>& InputStack) override;
 
 	/** Returns true if the player should use UMG touch controls */
 	bool ShouldUseTouchControls() const;
