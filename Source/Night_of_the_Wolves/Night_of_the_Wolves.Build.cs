@@ -21,7 +21,7 @@ public class Night_of_the_Wolves : ModuleRules
 			"Slate"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "HairStrandsCore", "Renderer" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "AnimGraphRuntime", "HairStrandsCore", "Renderer" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"Night_of_the_Wolves",

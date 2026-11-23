@@ -20,7 +20,7 @@ The saved map and materials are ready for gameplay. The authoring scripts run ag
 ```sh
 UE_ROOT="$HOME/UnrealEngine-5.9-preview-2"
 UE_PROJECT="$PWD/Night_of_the_Wolves.uproject"
-for script in import_cascades woodland_surfaces prepare_foliage_shaders moonlit_sky; do
+for script in import_cascades woodland_surfaces prepare_foliage_shaders moonlit_sky cottage_ground; do
   "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd" "$UE_PROJECT" \
     -run=pythonscript "-script=$PWD/Scripts/forest/$script.py" -nullrhi -unattended -nop4
 done
@@ -33,6 +33,8 @@ done
 ```
 
 The planting scripts replace the generated nursery stands, verge clusters, logs and the trees behind the cottage. During the first-leg pass, resimulating 30 nursery volumes produced 1,123 trees of all ages and 2,310 ferns. The baked edge layer added 937 ferns, 30 fallen logs and 96 trees behind the clearing. A standalone editor-game run independently generated 71 firs and 45 pines from the ridge PCG graph. The graph, materials and foliage types are editable in the Content Browser under `NightOfTheWolves/Cascades`. Changing the spline geometry requires regenerating the bank mesh to fit.
+
+The cottage turnoff and through-trail share one terrain mesh, `SM_CottageClearing`. Its ground material paints both treads into the needle litter. The 190 × 320 cm opening reaches the cottage threshold and extends under both jambs. A separate tagged cover closes it until Max digs. The lintel and recessed entrance ceiling provide 324 cm of clearance for the jump. After editing the approach or opening, rebuild the clearing with `Scripts/forest/cottage_ground.py`.
 
 The creek uses a separate continuous mesh with irregular banks on both sides. Surface UVs follow the slope, so the shingle at the water line and soil below the root shelf keep their physical scale. Exposed roots, water-worn stones, fern beds and fallen timber line the channel. A wooded rise behind the bandit keeps the last visible bend open. The shipping game uses the established crossing collision, anchor, water checks and checkpoints. The creek art is instantiated by `AFirstLegCrossing` at play time.
 

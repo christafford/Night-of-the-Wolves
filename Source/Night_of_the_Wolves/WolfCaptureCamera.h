@@ -38,8 +38,10 @@ private:
 
 	FVector AttackDirection = FVector::ForwardVector;
 	FVector StartFeet = FVector::ZeroVector;
+	FVector RunStart = FVector::ZeroVector;
 	FVector LaunchFeet = FVector::ZeroVector;
 	FVector FramingCentre = FVector::ZeroVector;
+	float PitBound = 0;
 	float RunIn = 0;
 	float Elapsed = 0;
 	bool bHit = false;

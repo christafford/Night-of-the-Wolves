@@ -21,7 +21,7 @@ if not levels.load_level("/Game/NightOfTheWolves/Maps/M1_Trail"):
     raise RuntimeError("Cannot load map")
 all_actors = actors.get_all_level_actors()
 labels = {a.get_actor_label() for a in all_actors}
-for required in ("M5 pursuit route", "M6 cabin spur", "Cabin front right", "M3PitCover"):
+for required in ("M5 pursuit route", "Cottage clearing", "Cabin front right", "M3PitCover"):
     if required == "M3PitCover":
         if not any(unreal.Name(required) in a.get_editor_property("tags") for a in all_actors):
             raise RuntimeError("Missing pit cover tag")

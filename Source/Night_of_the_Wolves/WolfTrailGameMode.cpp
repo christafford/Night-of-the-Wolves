@@ -4,6 +4,7 @@
 #include "WolfMeshComponent.h"
 #include "WolfCottageSet.h"
 #include "CottageHermit.h"
+#include "DialogueArticulation.h"
 #include "FirstLegCrossing.h"
 #include "WolfTrailHUD.h"
 #include "WolfTrailSave.h"
@@ -205,21 +206,21 @@ void AWolfTrailGameMode::Tick(float Dt)
 void AWolfTrailGameMode::UpdateCottage(float Dt,APawn& Pawn)
 {
 	const FVector P = Pawn.GetActorLocation();
-	if (bPitDug && P.Z < 26 && Near(P,PitLocation,92))
+	if (bPitDug && P.Z < Cottage->GetPitBounds().Max.Z+26 && Cottage->GetPitBounds().IsInsideXY(P))
 	{
 		Die(TEXT("The hollow gave way beneath you"));
 		return;
 	}
 	if (DigElapsed >= 0)
 	{
-		if (!Near(P,PitLocation,235) || Inventory.Equipped != TEXT("Shovel"))
+		if (!Near(P,Cottage->PitSurface(),235) || Inventory.Equipped != TEXT("Shovel"))
 			DigElapsed = -1;
 		else if ((DigElapsed += Dt) >= DigSeconds)
 		{
 			DigElapsed = -1;
 			bPitDug = true;
 			Cottage->SetPit(true);
-			Cottage->Impact(PitLocation,.65f,.65f);
+			Cottage->Impact(Cottage->PitSurface(),.65f,.65f);
 			Say(TEXT("The rotten cover drops into a deep hollow."));
 		}
 	}
@@ -232,33 +233,64 @@ void AWolfTrailGameMode::UpdateCottage(float Dt,APawn& Pawn)
 			Cottage->SwingDoor(FMath::Clamp(DoorSwing,0.f,1.f));
 		const float Run = FMath::Clamp((HermitElapsed-HermitReactionSeconds)/HermitRunSeconds,0.f,1.f);
 		const float Planted = FMath::Max(0.f,HermitElapsed-HermitReactionSeconds-HermitRunSeconds);
-		const float Drop = bPitDug ? FMath::Clamp(Planted/.64f,0.f,1.f) : 0.f;
-		const float Turn = bPitDug ? 0.f : FMath::SmoothStep(0.f,.68f,Planted);
+		// Let him find his footing and face Max for the bark before the rotten cover gives way.
+		constexpr float ShoutAt = .40f;
+		const float FallAt = ShoutAt + GetDialogueDuration(EDialogueLine::HermitShout) + .18f;
+		// He briefly catches at the rim, enough time to hear his plea before he slips.
+		const float PleaAt = FallAt + .44f;
+		const float SlipAt = PleaAt + GetDialogueDuration(EDialogueLine::HermitPit) + .24f;
+		const float ImpactAt = SlipAt + 1.25f;
+		const float FireAt = FMath::Max(HermitAimSeconds, FallAt);
+		const float Drop = bPitDug ? .56f * FMath::SmoothStep(FallAt, PleaAt, Planted)
+			+ .44f * FMath::SmoothStep(SlipAt + .12f, ImpactAt, Planted) : 0.f;
+		const float Turn = FMath::SmoothStep(0.f,.68f,Planted);
 		Hermit->Stage(Run,Turn,Drop);
+		if (!bHermitShouted && Planted >= ShoutAt)
+		{
+			bHermitShouted = true;
+			Hermit->ShoutAtMax();
+			Say(TEXT("“I warned you!”"), GetDialogueDuration(EDialogueLine::HermitShout));
+		}
 		const float PreviousRun = FMath::Clamp((HermitElapsed-Dt-HermitReactionSeconds)/HermitRunSeconds,0.f,1.f);
 		if (FMath::FloorToInt(Run*4.f) > FMath::FloorToInt(PreviousRun*4.f))
 			Cottage->Impact(Hermit->GetActorLocation(),.20f,Run == 1.f ? .72f : .94f);
-		if (!bPitDug && Planted >= HermitAimSeconds)
+		if (!bPitDug && Planted >= FireAt)
 		{
 			if (!bHermitFired)
 			{
 				Hermit->Fire();
 				bHermitFired = true;
 			}
-			if (Planted >= HermitAimSeconds+.18f)
+			if (Planted >= FireAt+.18f)
 			{
 				Die(TEXT("Hermit"));
 				return;
 			}
 		}
-		else if (Drop >= 1.f)
+		else if (bPitDug && Planted >= FallAt)
 		{
-			Hermit->EndReveal(true);
-			bHermitReacting = false;
-			bHermitTrapped = true;
-			Cottage->Impact(PitLocation,1.f,.7f);
-			Cottage->CurseFromPit();
-			Say(TEXT("A splash. The hermit curses from below."));
+			const float Previous = Planted - Dt;
+			if (Previous < FallAt) Cottage->Impact(Cottage->PitSurface(), .62f, .72f);
+			if (Previous < PleaAt && Planted >= PleaAt)
+			{
+				Hermit->CryFromPit();
+				Say(TEXT("“Get me out of here!”"), GetDialogueDuration(EDialogueLine::HermitPit));
+			}
+			if (Previous < SlipAt && Planted >= SlipAt) Hermit->LoseFooting();
+			if (Planted >= ImpactAt && !bHermitFired)
+			{
+				bHermitFired = true;
+				Hermit->Fire();
+				Say(TEXT("His shotgun goes off in the fall. The hermit lies still."), 3.f);
+				UE_LOG(LogTemp, Display, TEXT("COTTAGE HERMIT accidental shot in the hollow"));
+			}
+			if (Planted >= ImpactAt + .52f)
+			{
+				Hermit->RestInPit();
+				Hermit->EndReveal(true);
+				bHermitReacting = false;
+				bHermitTrapped = true;
+			}
 		}
 	}
 	Cottage->Animate(GetWorld()->GetTimeSeconds(),DigElapsed,DoorRemaining/DoorEnduranceSeconds,bSheltered && !bDoorOpen);
@@ -309,12 +341,12 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 	{
 		if (!bHermitReacting) ExteriorRemaining -= Dt;
 		if (bDoorwayGuarded) Cottage->DoorPack(CabinDoorLocation,false);
-		else Cottage->YardPack(P,ExteriorRemaining/ExteriorSeconds,false);
+		else Cottage->YardPack(Route.Get(),P,ExteriorRemaining/ExteriorSeconds,false);
 		if (ExteriorRemaining < 6) ThreatCue = TEXT("A wolf breaks cover and runs at you.");
 		else if (ExteriorRemaining < 16) ThreatCue = TEXT("Growls sound just beyond the yard.");
 		else if (Near(P,FVector(2390,220,0),330) && !bHermitReacting && !bHermitTrapped)
 			{
-			Cottage->WarnAtWindow();
+			Hermit->WarnAtWindow();
 			ThreatCue = TEXT("Behind the glass: a gun barrel. “Stay away from my door.”");
 		}
 		if (bHermitReacting) ThreatCue = HermitElapsed < HermitReactionSeconds ? TEXT("Heavy boots behind the door.") : TEXT("");
@@ -353,7 +385,7 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 	if (bDoorBreached && IsInside(P)) FleeRemaining = FMath::Min(FleeRemaining, 2.f) - (bBurning ? Dt : 0.f);
 	const float Seconds = bBurning ? FireRemaining : FleeRemaining;
 	if (bDoorwayGuarded) Cottage->DoorPack(CabinDoorLocation,bBurning);
-	else Cottage->YardPack(P,FMath::Clamp(Seconds/(bBurning ? FireDeterrenceSeconds : 14.f),0.f,1.f),bBurning);
+	else Cottage->YardPack(Route.Get(),P,FMath::Clamp(Seconds/(bBurning ? FireDeterrenceSeconds : 14.f),0.f,1.f),bBurning);
 	if (bBurning)
 		ThreatCue = Seconds < 5 ? TEXT("The lead wolf lunges toward the embers.") :
 			Seconds < 14 ? TEXT("A wolf feints at the burning end.") : TEXT("The wolves recoil from the flame.");
@@ -371,9 +403,9 @@ AWolfTrailGameMode::ETarget AWolfTrailGameMode::Target(const APawn& Pawn,bool bI
 	if (bItem && bSheltered && IsInside(P) && Near(P,HearthPosition,158) && Inventory.Has(TEXT("Firebrand")) && !Inventory.bBurning) return ETarget::Brand;
 	if (bItem)
 	{
-		const FVector ToPatch = (PitLocation-P).GetSafeNormal2D();
+		const FVector ToPatch = (Cottage->PitSurface()-P).GetSafeNormal2D();
 		const bool bFacing = FVector::DotProduct(Pawn.GetActorForwardVector(),ToPatch) > -.15f;
-		return !bPitDug && P.X < CabinDoorLocation.X && Inventory.Has(TEXT("Shovel")) && Near(P,PitLocation,215) && bFacing ? ETarget::Earth : ETarget::None;
+		return !bPitDug && P.X < CabinDoorLocation.X && Inventory.Has(TEXT("Shovel")) && Near(P,Cottage->PitSurface(),215) && bFacing ? ETarget::Earth : ETarget::None;
 	}
 	if (!Inventory.Has(TEXT("Shovel")) && Near(P,ShovelLocation,150) && !IsInside(P)) return ETarget::Shovel;
 	if (IsInside(P) && bSheltered)
@@ -381,14 +413,13 @@ AWolfTrailGameMode::ETarget AWolfTrailGameMode::Target(const APawn& Pawn,bool bI
 		if (!Inventory.Has(TEXT("Gold")) && !Inventory.Has(TEXT("Rope")) && Checkpoint < 4 && Near(P,TablePosition,165)) return ETarget::Supplies;
 		if ((!Inventory.Has(TEXT("Firebrand")) || !Inventory.bBurning) && Near(P,HearthPosition,158)) return ETarget::Brand;
 	}
-	if (Near(P,CabinDoorLocation,200))
+	// A knock can be made from solid ground beside either jamb after digging.
+	if (!bHermitTrapped && P.X < CabinDoorLocation.X-15 && Near(P,CabinDoorLocation,245))
+		return ETarget::Knock;
+	if (bHermitTrapped && IsInside(P) && Near(P,CabinDoorLocation,200))
 	{
-		if (!bHermitTrapped && P.X < CabinDoorLocation.X-15) return ETarget::Knock;
-		if (bHermitTrapped && IsInside(P))
-		{
-			if (!bSheltered) return ETarget::Bar;
-			if (!bDoorBreached) return bDoorOpen ? ETarget::Close : ETarget::Open;
-		}
+		if (!bSheltered) return ETarget::Bar;
+		if (!bDoorBreached) return bDoorOpen ? ETarget::Close : ETarget::Open;
 	}
 	return ETarget::None;
 }
@@ -431,16 +462,16 @@ void AWolfTrailGameMode::Act(bool bItem)
 	case ETarget::Earth:
 		if (Inventory.Equipped != TEXT("Shovel")) { Say(TEXT("Equip the shovel to clear the loose earth.")); break; }
 		DigElapsed = 0;
-		Cottage->Impact(PitLocation,.55f,1.1f);
+		Cottage->Impact(Cottage->PitSurface(),.55f,1.1f);
 		break;
 	case ETarget::Knock:
-		Cottage->ShoutAtDoor();
+		Cottage->HideWindowBarrel();
 		Cottage->Impact(CabinDoorLocation,.75f,1.2f);
 		bHermitReacting = true;
 		bHermitFired = false;
+		bHermitShouted = false;
 		HermitElapsed = 0;
 		Hermit->AnswerKnock(*Pawn);
-		Say(TEXT("“I warned you!”"),HermitReactionSeconds);
 		break;
 	case ETarget::Bar:
 		bSheltered = true;
@@ -493,6 +524,8 @@ void AWolfTrailGameMode::Die(const FString& Cause)
 {
 	if (IsOpeningCinematicPlaying() || IsDead() || bLegComplete) return;
 	DeathCause = Cause;
+	if (Crossing) Crossing->StopSpeech();
+	if (Hermit) Hermit->StopSpeech();
 	bWolfCaptured = Cause == TEXT("Wolves");
 	bShotByHermit = Cause == TEXT("Hermit");
 	InteractionPrompt.Reset(); ThreatCue.Reset();
@@ -556,7 +589,7 @@ void AWolfTrailGameMode::RestoreWorld(int32 Id)
 	BestDepartureDistance=RouteDistance(CheckpointTransform.GetLocation());
 	bDoorwayGuarded=Id==2;
 	Cottage->RestoreProps(bSheltered);
-	Hermit->RestoreEncounter(bHermitTrapped,CabinDoorLocation,PitLocation);
+	Hermit->RestoreEncounter(bHermitTrapped,CabinDoorLocation,Cottage->PitSurface(),Cottage->GetPitBounds().GetExtent().Y);
 	Cottage->SetShovel(!Inventory.Has(TEXT("Shovel"))); Cottage->SetPit(bPitDug);
 	Cottage->SetSupplies(Id<3 && !Inventory.Has(TEXT("Rope"))); Cottage->SetBrand(!Inventory.Has(TEXT("Firebrand")));
 	SetDoorOpen(Id>=3);

@@ -1,5 +1,46 @@
 # Playtest record
 
+## Speaking faces and the hermit’s fall, November 22, 2026
+
+[Watch the two encounters with recorded game audio](../Saved/FacialReview/Dialogue-Encounters.mp4)
+
+| Case | Observed result |
+| --- | --- |
+| Warning and doorstep | The window warning kept Max’s 90° gameplay view. A physical knock on intact timbers brought the hermit outside, showed his shout in a 30° close-up, then produced the shot and death card. On the dug route, a 33° view from below his hat brim showed both eyes and his moving mouth during “Get me out of here!” The measured mouth motion in both lines was within 20 ms of the recorded Linux audio output. |
+| Prepared pit | The game audio recording contains the plea, the original Wilhelm scream and one shotgun discharge. The shot followed the start of the scream by 1.24 seconds. The camera showed his upper body and arms inside the pit. The recorded shot landed during the visible flash. He remained motionless for over two seconds after impact, with no further dialogue. The clean run jumped the hollow, barred the door and proceeded to the escape bend. |
+| Roadside gold | In the Vulkan game, Max opened the inventory wheel, showed the gold, turned to the patch and threw it. The camera framed the demand, the gold response and the final order. The bandit changed expression when the sack appeared. His three visible lines tracked the stereo output within 5–25 ms. |
+| Recovery | The clean first-leg driver reached CP5 in 84.02 simulated seconds. The separate failure driver recovered after a missed swing and a failed gold diversion. The cottage driver verified the unprepared knock and CP1 retry, then secured and restored CP2. |
+| Packaged cottage | Starting from a private copy of the earned CP1 save, normal keyboard input took and equipped the shovel, dug at the side of the door, knocked, and jumped the open hollow after the accidental shot. The bar-door prompt appeared inside. Barring the door wrote CP2 to the private save. The game exited with code 0. The stereo recording matched all five expected cues, with the gunshot 1.26 seconds after the scream began. [Packaged cabin playthrough](../Saved/FacialReview/Shipping-Cabin-Pit.mp4) |
+| Linux Shipping | BuildCookRun built, cooked and archived the Linux executable with zero cook errors or warnings. The archived executable matched the compiled binary. The cooked container included both moving hair meshes, the shared mouth material, all six spoken cues, the fall scream and the shotgun report. A private far-bank save exercised the demand, early gold presentation, fatal shot and CP4 retry with normal keyboard and mouse input. Comparing mouth openings in 30 fps footage to the recorded output put both bandit lines within about 40 ms. A second run equipped the gold under the bandit’s gaze, turned out of the close-up and threw it with 1.36 seconds left in his response. Its final syllable and the queued parting order both played. [Mouth shapes](../Saved/FacialReview/Shipping-Bandit-Words.jpg) · [Packaged gold toss](../Saved/FacialReview/Shipping-Bandit-Gold.mp4) |
+
+## Hermit and bandit dialogue, November 22, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Finished performances | Blind English transcription with whisper.cpp small.en recovered the words of all six mastered cues. The clips run 1.03–3.01 seconds. Integrated loudness spans −19.36 to −16.0 LUFS and true peaks span −4.80 to −1.99 dBTP. The warning was checked through the door filter and the plea through the pit reflection. [Six-line audition, hermit first](../Saved/VoiceReview/Hermit-and-Bandit.wav) |
+| Unreal import | The editor loaded six non-looping SoundWaves and verified their durations against the mono 24 kHz masters. The import reported zero errors and warnings. |
+| In-game mix and timing | The Vulkan Development run reached CP5 from the trailhead in 79.71 game seconds. Waveform matching identified all six performances, including each final syllable, in the recorded stereo game mix. The demand, response to the gold and parting order played in sequence. The order finished about 30 m behind the camera, nine seconds before the pack reached the bandit. [Cottage and roadside gameplay audio](../Saved/VoiceReview/In-game-dialogue.wav) |
+| Linux Shipping | The cook reported zero errors and warnings. The archive contained updated data for all six dialogue assets. In the packaged game, normal keyboard and mouse input reached the demand, fatal shot and far-bank retry. Three fragments of the new demand matched the packaged stereo output with correlations of 0.91–0.97. The game exited normally. |
+
+## Roadside bandit appearance, November 22, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Robbery and far-bank retry | The Linux Development clean driver reached CP5 in 79.38 game seconds. The recovery driver rushed the bandit, saw the fatal shot and returned to CP4. A failed gold diversion restored the pouch for the successful retry. |
+| Character in motion | A Vulkan run followed the bandit through the demand, walk to the pouch, stoop and fall. Across 1,186 sampled frames the head, hat, hair and outfit hand joints followed their attachment points within 0.001 cm. The run reached the escape checkpoint. |
+| Appearance in the clearing | The normal player camera shows the hat and crossed cartridge belts during the demand. Front, side and rear inspection views confirmed the raised collar meets the neck and the eyes and moustache remain visible beneath the brim. A leather strap edge lifts slightly at the far shoulder and hip in close-up. [Portrait](../Saved/BanditReview/Bandit-Portrait.png) · [Player camera](../Saved/BanditReview/Roadside-Encounter.png) · [Before and after](../Saved/BanditReview/Before-and-After.jpg) |
+| Packaged Linux robbery | The Shipping cook and archive succeeded with zero cook warnings or errors. A muted 1440 × 900 session resumed an earned far-bank checkpoint in a private profile. Keyboard and mouse input brought Max to the bandit’s demand, crossed the firing boundary, displayed “You died” and returned Max to the far bank. The game closed normally. [Shipping recording](../Saved/BanditReview/Shipping-Robbery.mp4) |
+
+## Cabin ground and doorway jump, November 22, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Flickering rectangles | The original Vulkan recording reproduced flat rectangles switching between forest litter and trail dirt in the cabin yard. The saved map had the spur, yard slabs and parts of the main trail occupying the same depth. A single stitched clearing now carries both ground textures. During the same 112-frame pan, 39 of 78 sampled locations flashed before the repair, and zero flashed afterward. [Matched recording](../Saved/CabinGroundReview/Cottage-Yard-Before-and-After.mp4) |
+| Pack crossing the yard | All three visible wolves continued moving and posing through the original camera pass. Separate 60 Hz movement captures found that faraway wolves rose 128 cm when Max jumped, and that both flankers sometimes reversed direction on consecutive frames. On the revised ground queries, they stayed grounded through the same jump and those repeated reversals disappeared. |
+| Open hollow | A private CP2 session used an open door and a lit firebrand. From each side, Max tried going straight and cutting around each jamb, first at walking speed and then sprinting. All 12 attempts fell into the hollow. Running jumps landed on solid ground on both sides. The raised lintel cleared Max’s head across a continuous 3.75 m range of tested entry takeoffs at normal speed. Downward traces found the tagged cover at floor level and the bottom 2.50 m below after digging. [Both jumps in Development](../Saved/CabinGroundReview/Cottage-Doorway-Jumps.mp4) |
+| Cabin puzzle and checkpoint | The Development route took the shovel, dug from the side, knocked, watched the hermit step into the open hollow, jumped inside and barred the door. The fatal knock on intact boards and CP1 retry also passed. Both unlit departures triggered wolf capture and a CP2 restore. The lit departure cleared the pit and the clean run reached CP5 in 79.38 game seconds. |
+| Packaged Linux game | BuildCookRun archived the Shipping game with exit code 0. The cook reported zero errors and warnings. UnrealPak confirmed the revised map, clearing mesh and material. The archived executable matched the compiled binary. A private copy of a previously earned CP2 save loaded successfully. Keyboard input took the burning brand at the hearth, opened the door and jumped outside. The inventory wheel still showed the equipped burning brand, and the game exited normally. [Shipping jump](../Saved/CabinGroundReview/Shipping-Doorway-Jump.png) |
+
 ## Title and wolf-eye opening, November 22, 2026
 
 | Case | Observed result |

@@ -3,6 +3,7 @@
 #if !UE_BUILD_SHIPPING
 #include "FirstLegCrossing.h"
 #include "CottageHermit.h"
+#include "WolfCottageSet.h"
 #include "Night_of_the_WolvesPlayerController.h"
 #include "WolfTrailRoute.h"
 #include "Components/SplineComponent.h"
@@ -27,7 +28,7 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 	if (bHermitReacting)
 	{
 		const float OnBoards = HermitElapsed - HermitReactionSeconds - HermitRunSeconds;
-		if (OnBoards >= 0 && FVector::DistSquared2D(Hermit->GetActorLocation(),PitLocation) > 1.f)
+		if (OnBoards >= 0 && FVector::DistSquared2D(Hermit->GetActorLocation(),Cottage->PitSurface()) > 1.f)
 		{
 			Fail(TEXT("hermit missed the diggable timbers"));
 			return;
@@ -37,7 +38,7 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 			UE_LOG(LogTemp,Display,TEXT("COTTAGE HERMIT reached %s hollow at %s after %.2fs; Max watched from %s"),
 				bPitDug ? TEXT("open") : TEXT("covered"), *Hermit->GetActorLocation().ToCompactString(),
 				HermitElapsed,*P.ToCompactString());
-			if (P.X > PitLocation.X-130.f || FMath::Abs(P.Y-PitLocation.Y) < 125.f)
+			if (P.X > Cottage->PitSurface().X-130.f || FMath::Abs(P.Y-Cottage->PitSurface().Y) < Cottage->GetPitBounds().GetExtent().Y+25.f)
 			{
 				Fail(TEXT("Max failed to clear the hermit's path on solid ground"));
 				return;
@@ -46,7 +47,7 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 		if (FParse::Param(FCommandLine::Get(),TEXT("CottagePhotos")))
 		{
 			FString Name;
-			if (OnBoards >= .40f && bPitDug) Name = TEXT("Hermit-Fall");
+			if (bPitDug && bHermitFired) Name = TEXT("Hermit-Fall");
 			else if (OnBoards >= 1.15f && !bPitDug) Name = TEXT("Hermit-Aim");
 			else if (HermitElapsed > HermitReactionSeconds + .54f * HermitRunSeconds && OnBoards < 0.f)
 				Name = bPitDug ? TEXT("Hermit-Run-Open") : TEXT("Hermit-Run-Covered");
@@ -139,14 +140,15 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 			PC->RequestTestEquip(TEXT("Shovel"));
 		break;
 	case 5:
-		if(Move(FVector(2262,156,0))) { UseEquipped(); if(DigElapsed>=0) ++TestStep; }
+		if(Move(FVector(2350,197,0))) { UseEquipped(); if(DigElapsed>=0) ++TestStep; }
 		break;
 	case 6:
-		if(bPitDug && Move(FVector(2338,128,0))) { Interact(); if(bHermitReacting) ++TestStep; }
+		if(bPitDug && Move(FVector(2350,202,0))) { Interact(); if(bHermitReacting) ++TestStep; }
 		break;
-	case 7: if(bHermitTrapped && Move(FVector(2110,155,0))) ++TestStep; break;
+	case 7: if(bHermitTrapped && Move(FVector(2010,0,0))) ++TestStep; break;
 	case 8:
-		if(Move(FVector(2110,0,0)))
+		Move(FVector(2590,0,0));
+		if(P.X >= Cottage->GetPitBounds().Min.X-65)
 		{
 			if(ACharacter* Character=Cast<ACharacter>(&Pawn)) Character->Jump();
 			++TestStep;
@@ -297,10 +299,13 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 		}
 		break;
 	case 14: if(Move(FVector(2575,0,0))) {Interact(); if(bDoorOpen) ++TestStep;} break;
-	case 15: if(Move(FVector(2372,0,0))) ++TestStep; break;
-	case 16:
-		if(ACharacter* C=Cast<ACharacter>(&Pawn)) C->Jump();
-		++TestStep;
+	case 15:
+		Move(FVector(2080,0,0));
+		if(P.X <= Cottage->GetPitBounds().Max.X+52)
+		{
+			if(ACharacter* C=Cast<ACharacter>(&Pawn)) C->Jump();
+			TestStep=17;
+		}
 		break;
 	case 17:
 		if(Move(FVector(2080,0,0))) {if(ACharacter* C=Cast<ACharacter>(&Pawn)) C->StopJumping(); ++TestStep;}

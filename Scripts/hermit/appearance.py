@@ -148,7 +148,7 @@ class SurfaceMesh:
                 pair = [(a, b, d), (a, d, c)]
                 self.f.extend(u.IntVector(*(tri[::-1] if reverse else tri)) for tri in pair)
 
-    def save(self, name, material, head):
+    def save(self, name, material, head, folder=ROOT):
         m = u.DynamicMesh()
         buffers = u.GeometryScriptSimpleMeshBuffers(
             vertices=self.v, triangles=self.f, uv0=self.uv, vertex_colors=self.colors
@@ -156,7 +156,7 @@ class SurfaceMesh:
         m.append_buffers_to_mesh(buffers)
         m.set_per_vertex_normals()
         m.inverse_transform_mesh(head)
-        path = ROOT + "/" + name
+        path = folder + "/" + name
         if assets.does_asset_exist(path):
             target = assets.load_asset(path)
             _, result = u.GeometryScript_AssetUtils.copy_mesh_to_static_mesh(

@@ -24,8 +24,25 @@ Square photorealistic seamless material swatch for a 3D timber wolf winter coat.
 
 The hermit's appearance follows the supplied double portrait of Popcorn Sutton. The [hermit authoring script](../../../Scripts/build_cottage_hermit.py) starts from the local MetaHuman Creator Walter preset. The [fitted workwear](../../../Scripts/hermit/workwear.py) follows his moving body. The [hat and sculpt](../../../Scripts/hermit/appearance.py) and the [beard and mustache strand atlas](../../../Scripts/hermit/strand_atlas.py) belong to the project. The head material uses Walter’s age, pore and cavity maps. He runs in the local rifle jog, then holds a head-up pose on the boards. [Portrait reference](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRrB-HJwsn_XSc7109zPj06oiAdS6yUpUwMdMwcSJWbeb2ATdlP7aRnLu8&s=10)
 
+## Roadside bandit
+
+The supplied black-and-white portrait of Pancho Villa guided the character’s face, moustache, hat and crossed bandoliers. The game uses an original MetaHuman sculpt with skin maps baked in the local editor. The shirt, leather and hat colors are art choices for the moonlit clearing. [Portrait reference](https://hips.hearstapps.com/hmg-prod/images/general-villa-news-photo-1686667587.jpg)
+
+The editable character is `/Game/NightOfTheWolves/Bandit/Creator/Villa`. In the local Unreal Editor, run the head authoring script first to export the sculpt, bake the skin under a renderer and fit the hat and hair. Then run the wardrobe script. It fits the shirt collar to that exported neck and skins the shirt, bandoliers, trousers and boots to the animated body. Both scripts use the project's MetaHuman Character and Geometry Scripting plugins. [Head and hat authoring](../../../Scripts/build_bandit_head.py) · [Costume authoring](../../../Scripts/bandit/campaign_dress.py)
+
 ## Props, voice and ambience
 
 The shovel, rope coil, coin pouch, firebrand and early static wolf come from [the prop generator](../../../Scripts/make_first_leg_props.py). It also synthesizes the hearth, door impact, growl and gunshot. Run it with Python 3 to regenerate the GLB and WAV sources, then use the [Unreal import script](../../../Scripts/import_first_leg_props.py).
 
-The original dialogue uses a temporary synthetic performance. The forest and presentation credits cover the photographic woodland assets, wind, howls and earlier materials. [Voice credits](Voices/SOURCES.md) · [Forest credits](../../../docs/FOREST.md) · [Presentation credits](../Presentation/SOURCES.md)
+The hermit and bandit have original AI-generated performances of the game's six dialogue lines. Their dry takes, performance directions and location-specific mixes are documented with the audio sources. [Voice credits](Voices/SOURCES.md) · [Forest credits](../../../docs/FOREST.md) · [Presentation credits](../Presentation/SOURCES.md)
+
+The hermit’s fall uses the Wilhelm scream from Craig Smith’s CC0 preservation of the USC Sunset Editorial tapes. The source reel and exact cut are recorded with the WAV. [Fall sound source](Hermit/SOURCES.md)
+
+After rebuilding either speaking head or its hair cards, run the two editor scripts below. The first fits each beard or moustache lock to the weighted facial surface. The second assigns the MetaHuman enamel, gum and tongue atlas to both speaking heads under the encounter lighting.
+
+```sh
+"$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd" "$UE_PROJECT" \
+  -run=pythonscript -script="$PWD/Scripts/skin_dialogue_whiskers.py" -nullrhi -nosound -unattended -nop4
+"$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd" "$UE_PROJECT" \
+  -run=pythonscript -script="$PWD/Scripts/finish_dialogue_mouths.py" -AllowCommandletRendering -nosound -unattended -nop4
+```

@@ -15,6 +15,7 @@ class USkeletalMeshComponent;
 class UAnimSequence;
 class USoundBase;
 class UAudioComponent;
+class UDialogueVoiceComponent;
 
 UCLASS()
 class NIGHT_OF_THE_WOLVES_API AFirstLegCrossing : public AActor
@@ -27,6 +28,7 @@ public:
 	bool TickEncounter(AWolfTrailGameMode& Game, APawn& Pawn, float Delta);
 	bool TryAction(AWolfTrailGameMode& Game, APawn& Pawn, bool bItemUse);
 	void Restore(int32 Checkpoint);
+	void StopSpeech();
 	bool IsTraversalLocked() const;
 	UWolfMeshComponent* GetLeadWolf() const;
 #if !UE_BUILD_SHIPPING
@@ -87,7 +89,6 @@ private:
 	UPROPERTY() TObjectPtr<UMaterialInterface> FoamMat;
 	UPROPERTY() TObjectPtr<UMaterialInterface> BlackMat;
 	UPROPERTY() TObjectPtr<UMaterialInterface> GoldMat;
-	UPROPERTY() TObjectPtr<USkeletalMesh> BanditMesh;
 	UPROPERTY() TObjectPtr<UAnimSequence> AimAnim;
 	UPROPERTY() TObjectPtr<UAnimSequence> WalkAnim;
 	UPROPERTY() TObjectPtr<UAnimSequence> StoopAnim;
@@ -99,8 +100,12 @@ private:
 	UPROPERTY() TObjectPtr<USoundBase> DemandVoice;
 	UPROPERTY() TObjectPtr<USoundBase> GoldVoice;
 	UPROPERTY() TObjectPtr<USoundBase> StayVoice;
-	UPROPERTY() TObjectPtr<UAudioComponent> Speech;
+	UPROPERTY() TObjectPtr<UDialogueVoiceComponent> Speech;
+	UPROPERTY(Transient) TArray<TObjectPtr<USoundBase>> PendingSpeech;
 	UPROPERTY() TObjectPtr<USkeletalMeshComponent> Bandit;
+	UPROPERTY() TObjectPtr<USkeletalMeshComponent> BanditFace;
+	UPROPERTY() TObjectPtr<USkeletalMeshComponent> BanditHair;
+	UPROPERTY() TObjectPtr<USkeletalMeshComponent> BanditClothes;
 	UPROPERTY() TObjectPtr<USceneComponent> BanditRoot;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Cord;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Bag;
@@ -126,7 +131,8 @@ private:
 	void FinishLanding(AWolfTrailGameMode& Game, APawn& Pawn);
 	void MoveBandit(const FVector& Position, const FVector& Facing);
 	void StageCue(const FString& Text, float Seconds=2.3f);
-	void Speak(USoundBase* Line);
+	void QueueSpeech(USoundBase* Line);
+	void NoticeGold();
 	void SetRing(bool bVisible);
 	bool IsAimingAtGold(const APawn& Pawn) const;
 	bool IsInsideWater(const FVector& Position) const;

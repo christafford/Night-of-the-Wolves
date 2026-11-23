@@ -1,4 +1,5 @@
 #include "FirstLegCrossing.h"
+#include "DialogueVoiceComponent.h"
 #include "WolfPackComponent.h"
 #include "FirstLegCrossingLayout.h"
 #include "Night_of_the_WolvesCharacter.h"
@@ -105,12 +106,23 @@ void AFirstLegCrossing::StageCue(const FString& Message,float Seconds)
 	CueTime=Seconds;
 }
 
-void AFirstLegCrossing::Speak(USoundBase* Line)
+void AFirstLegCrossing::QueueSpeech(USoundBase* Line)
 {
-	if (!Speech || !Line) return;
-	Speech->Stop();
-	Speech->SetSound(Line);
-	Speech->Play();
+	if (Line) PendingSpeech.Add(Line);
+}
+
+void AFirstLegCrossing::NoticeGold()
+{
+	if (bGoldDemandSpoken) return;
+	bGoldDemandSpoken = true;
+	Speech->SetMood(0.f, 1.f);
+	QueueSpeech(GoldVoice);
+}
+
+void AFirstLegCrossing::StopSpeech()
+{
+	PendingSpeech.Reset();
+	if (Speech) Speech->ResetPerformance();
 }
 
 void AFirstLegCrossing::ShowRope(const FVector& End)
@@ -135,7 +147,7 @@ void AFirstLegCrossing::Restore(int32 Checkpoint)
 	ActionTime=BankTime=PackTime=DiversionTime=AimTime=CueTime=0;
 	AttackTime=-1;
 	bPouchLanded=bReachedBend=bGoldDemandSpoken=false;
-	if (Speech) Speech->Stop();
+	StopSpeech();
 	Cue.Empty();
 	if (!Cord) return;
 	MoveBandit(BanditMark+FVector(0,230,0),BanditMark-FVector(500,0,0));
@@ -381,6 +393,7 @@ bool AFirstLegCrossing::TryAction(AWolfTrailGameMode& Game,APawn& Pawn,bool bIte
 		{
 			StageCue(TEXT("His gun stays raised. He gestures at your bag.")); return true;
 		}
+		NoticeGold();
 		if (!IsAimingAtGold(Pawn))
 		{
 			StageCue(TEXT("Look back at the marked patch to toss the sack.")); return true;
@@ -390,8 +403,7 @@ bool AFirstLegCrossing::TryAction(AWolfTrailGameMode& Game,APawn& Pawn,bool bIte
 			Phase=EPhase::Diversion; DiversionTime=0; TossOrigin=Pawn.GetActorLocation()+FVector(0,0,25);
 			Bag->SetWorldLocation(TossOrigin); Bag->SetVisibility(true); SetRing(false);
 			Bandit->PlayAnimation(WalkAnim,true);
-			Speak(StayVoice);
-			StageCue(TEXT("“Stay right there.” He lowers the gun."),2.8);
+			QueueSpeech(StayVoice);
 		}
 		return true;
 	}
@@ -401,6 +413,18 @@ bool AFirstLegCrossing::TryAction(AWolfTrailGameMode& Game,APawn& Pawn,bool bIte
 void AFirstLegCrossing::UpdateFarBank(AWolfTrailGameMode& Game,APawn& Pawn,float Delta)
 {
 	if (Phase==EPhase::Escaped) return;
+	// A quick equip and throw can request all three lines before the first one ends.
+	if (!PendingSpeech.IsEmpty() && Speech && !Speech->IsDelivering())
+	{
+		USoundBase* Wave = PendingSpeech[0];
+		PendingSpeech.RemoveAt(0);
+		const EDialogueLine Line = Wave == DemandVoice ? EDialogueLine::BanditDemand :
+			(Wave == GoldVoice ? EDialogueLine::BanditGold : EDialogueLine::BanditStay);
+		Speech->PlayLine(Wave, Line);
+		const TCHAR* Words = Line == EDialogueLine::BanditDemand ? TEXT("“Hands up. Don't move.”") :
+			Line == EDialogueLine::BanditGold ? TEXT("“The bag. Put it down. Slowly.”") : TEXT("“Stay right there.”");
+		StageCue(Words, GetDialogueDuration(Line));
+	}
 	const FVector P=Pawn.GetActorLocation();
 	PackTime+=Delta;
 	const float Clock=PackTime*26.f/FMath::Max(4.f,PackRouteSeconds);
@@ -443,13 +467,13 @@ void AFirstLegCrossing::UpdateFarBank(AWolfTrailGameMode& Game,APawn& Pawn,float
 	{
 		Phase=EPhase::Demand;
 		if (ACharacter* Character=Cast<ACharacter>(&Pawn)) Character->GetCharacterMovement()->StopMovementImmediately();
-		Speak(DemandVoice);
-		StageCue(TEXT("“Hands up. Don't move.”"),3);
+		Speech->SetMood(.55f, 0.f);
+		QueueSpeech(DemandVoice);
 	}
 	if (Phase==EPhase::Demand)
 	{
 		const bool bGold=Game.Inventory.Equipped==TEXT("Gold");
-		if (bGold && !bGoldDemandSpoken) { bGoldDemandSpoken=true; Speak(GoldVoice); }
+		if (bGold) NoticeGold();
 		MoveBandit(FMath::VInterpConstantTo(BanditRoot->GetComponentLocation(),BanditMark,Delta,160),P);
 		if (P.X>BanditMark.X-320)
 		{
@@ -465,7 +489,7 @@ void AFirstLegCrossing::UpdateFarBank(AWolfTrailGameMode& Game,APawn& Pawn,float
 		else AimTime=0;
 		SetRing(bGold);
 		Game.InteractionPrompt=bGold ? (IsAimingAtGold(Pawn) ? TEXT("F  Toss the sack onto the moonlit patch") :
-			TEXT("“The bag. Put it down. Slowly.”  Look behind you.")) : TEXT("The stranger raises his gun and points at your belongings.");
+			TEXT("Look behind you for the moonlit patch.")) : TEXT("The stranger raises his gun and points at your belongings.");
 		return;
 	}
 	if (Phase!=EPhase::Diversion) return;
@@ -501,6 +525,7 @@ void AFirstLegCrossing::UpdateFarBank(AWolfTrailGameMode& Game,APawn& Pawn,float
 		if (Clock>11 && FVector::Dist2D(Lead,BanditRoot->GetComponentLocation())<170)
 		{
 			AttackTime=0;
+			StopSpeech();
 			Bandit->PlayAnimation(DeathAnim,false);
 			UGameplayStatics::PlaySoundAtLocation(this,Shot,BanditRoot->GetComponentLocation(),.8);
 			StageCue(TEXT("A cry at the bend. One wild shot."),3.5);

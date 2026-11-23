@@ -9,7 +9,7 @@ assets = u.EditorAssetLibrary
 tools = u.AssetToolsHelpers.get_asset_tools()
 
 
-def build(name, trail):
+def build(name, trail, cottage=False):
     if assets.does_asset_exist(DEST + "/" + name):
         mat = assets.load_asset(DEST + "/" + name)
         edit.delete_all_material_expressions(mat)
@@ -58,7 +58,18 @@ float3 soil = Dirt*float3(1.05,.93,.77);
 float gravel = smoothstep(.18,.42,Gravel.r)*.32;
 float3 tread = lerp(soil,Gravel*float3(.68,.63,.51),gravel);
 """
-    if trail:
+    if cottage:
+        # The yard mesh stores the signed distance across the main tread in UV0.y,
+        # in the same units as the neighbouring 7.5x-wide blockout pieces.
+        local = node(u.MaterialExpressionTextureCoordinate, -900, 320)
+        code += """
+float acrossTrail = abs(Local.y + broad*6);
+float2 nearestSpur = float2(1900, clamp(W.y, -925, -160));
+float acrossSpur = length(W.xy - nearestSpur) / 4.5 + broad*4;
+float edge = min(acrossTrail, acrossSpur) + (Forest.r-Dirt.r)*15;
+return lerp(tread,litter,smoothstep(12,29,edge));
+"""
+    elif trail:
         local = node(u.MaterialExpressionTransformPosition, -900, 320)
         local.set_editor_properties(
             {

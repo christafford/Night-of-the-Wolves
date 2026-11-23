@@ -33,6 +33,7 @@ private:
 	bool bCovering = false;
 	FVector CoverMarks[2];
 	void PlaceMoonBounce(const FVector& Ground);
+	bool TraceSolidTerrain(FHitResult& Hit, const FVector& From, const FVector& To) const;
 	FVector FeetOnGround(FVector Position) const;
 	FVector AvoidObstacle(FVector From, FVector Toward, float Side) const;
 	void Step(int32 Index, const FVector& Goal, const FVector& Face, float Dt, float Threat,

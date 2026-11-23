@@ -21,6 +21,8 @@ public:
 	virtual void BeginPlay() override;
 	void RestoreProps(bool bHermitCaught);
 	void SetPit(bool bDug);
+	const FBox& GetPitBounds() const { return PitBounds; }
+	FVector PitSurface() const { return FVector(PitBounds.GetCenter().X,PitBounds.GetCenter().Y,PitBounds.Max.Z); }
 	void SetShovel(bool bAvailable);
 	void SetSupplies(bool bAvailable);
 	void SetBrand(bool bAvailable);
@@ -28,14 +30,12 @@ public:
 	void SwingDoor(float Fraction);
 	void Animate(float Time,float DigTime,float BarHealth,bool bBarred);
 	void TrailPack(AWolfTrailRoute* Route,float Distance,const FVector& Player);
-	void YardPack(const FVector& Target,float Separation,bool bBurning);
+	void YardPack(const AWolfTrailRoute* Route,const FVector& Target,float Separation,bool bBurning);
 	void HidePack();
 	void DoorPack(const FVector& Door, bool bRepelled);
 	UWolfMeshComponent* GetLeadWolf() const;
 	void Impact(const FVector& Location,float Volume,float Pitch);
-	void WarnAtWindow();
-	void ShoutAtDoor();
-	void CurseFromPit();
+	void HideWindowBarrel();
 private:
 	UPROPERTY() TObjectPtr<UStaticMesh> Cube;
 	UPROPERTY() TObjectPtr<UStaticMesh> Ball;
@@ -53,10 +53,6 @@ private:
 	UPROPERTY() TObjectPtr<USoundBase> ImpactSound;
 	UPROPERTY() TObjectPtr<USoundBase> GrowlSound;
 	UPROPERTY() TObjectPtr<USoundBase> FireSound;
-	UPROPERTY() TObjectPtr<USoundBase> WarningVoice;
-	UPROPERTY() TObjectPtr<USoundBase> ShoutVoice;
-	UPROPERTY() TObjectPtr<USoundBase> TrappedVoice;
-	UPROPERTY() TObjectPtr<class UAudioComponent> VoiceAudio;
 	UPROPERTY() TObjectPtr<USoundAttenuation> Nearby;
 	UPROPERTY() TArray<TObjectPtr<AActor>> DoorActors;
 	UPROPERTY() TArray<TObjectPtr<AActor>> PitCover;
@@ -68,12 +64,11 @@ private:
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Bar;
 	UPROPERTY() TObjectPtr<USceneComponent> WindowWarning;
 	float NextGrowl=0;
+	FBox PitBounds = FBox(ForceInit);
 	bool bPitOpen=false;
-	bool bWarned=false;
 	UStaticMeshComponent* Piece(UStaticMesh* Mesh,UMaterialInterface* Mat,FVector Position,FVector Scale,FRotator Rotation=FRotator::ZeroRotator,USceneComponent* Parent=nullptr,bool bSolid=false);
 	UStaticMeshComponent* Stick(FVector From,FVector To,float Width,UMaterialInterface* Mat,USceneComponent* Parent=nullptr,bool bSolid=false);
 	void Growl(const FVector& Lead, float Threat);
 	void BuildProps();
 	void BuildRoof();
-	void Speak(USoundBase* Line,FVector Source,float Volume);
 };

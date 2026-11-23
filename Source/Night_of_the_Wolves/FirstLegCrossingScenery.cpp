@@ -1,7 +1,11 @@
 #include "FirstLegCrossing.h"
+#include "DialogueVoiceComponent.h"
+#include "DialogueFaceAnimInstance.h"
 #include "WolfPackComponent.h"
 #include "FirstLegCrossingLayout.h"
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimInstance.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -47,8 +51,65 @@ AFirstLegCrossing::AFirstLegCrossing()
 	Pine = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Cascades/SM_ShorePine/StaticMeshes/SM_ShorePine"));
 	Fern = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Cascades/SM_SwordFern/StaticMeshes/SM_SwordFern"));
 	Pack = CreateDefaultSubobject<UWolfPackComponent>(TEXT("HuntingPack"));
-	BanditMesh = Asset<USkeletalMesh>(TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"));
-	AimAnim = Asset<UAnimSequence>(TEXT("/Game/Characters/Mannequins/Anims/Pistol/MF_Pistol_Idle_ADS"));
+	BanditRoot = CreateDefaultSubobject<USceneComponent>(TEXT("BanditRoot"));
+	BanditRoot->SetupAttachment(RootComponent);
+	Bandit = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("BanditBody"));
+	Bandit->SetupAttachment(BanditRoot);
+	Bandit->SetRelativeRotation(FRotator(0,-90,0));
+	Bandit->SetSkeletalMesh(Asset<USkeletalMesh>(TEXT("/Game/NightOfTheWolves/Max/Wardrobe/SK_MaxExposedBody")));
+
+	UMaterialInterface* BodySkin = Asset<UMaterialInterface>(TEXT("/Game/NightOfTheWolves/Bandit/MI_VillaBodySkin"));
+	for (int32 Slot = 0; Slot < Bandit->GetNumMaterials(); ++Slot)
+		Bandit->SetMaterial(Slot, BodySkin);
+
+	BanditFace = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("BanditFace"));
+	BanditFace->SetupAttachment(Bandit);
+	BanditFace->SetSkeletalMesh(Asset<USkeletalMesh>(TEXT("/Game/NightOfTheWolves/Bandit/Villa_Head")));
+	BanditFace->SetAnimInstanceClass(UDialogueFaceAnimInstance::StaticClass());
+
+	BanditClothes = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("CampaignDress"));
+	BanditClothes->SetupAttachment(Bandit);
+	BanditClothes->SetSkeletalMesh(Asset<USkeletalMesh>(TEXT("/Game/NightOfTheWolves/Bandit/SK_BanditCampaignDress")));
+	for (USkeletalMeshComponent* Part : {Bandit.Get(), BanditFace.Get(), BanditClothes.Get()})
+	{
+		Part->SetLightingChannels(true,false,true);
+		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Part->SetGenerateOverlapEvents(false);
+		Part->SetCanEverAffectNavigation(false);
+		Part->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+	}
+
+	auto* Hat = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BroadBrimHat"));
+	Hat->SetupAttachment(BanditFace, TEXT("head"));
+	Hat->SetStaticMesh(Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Bandit/SM_VillaHat")));
+	Hat->SetLightingChannels(true,false,true);
+	Hat->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Hat->SetCanEverAffectNavigation(false);
+	BanditHair = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Animated bandit hair"));
+	BanditHair->SetupAttachment(BanditFace);
+	BanditHair->SetSkeletalMesh(Asset<USkeletalMesh>(TEXT("/Game/NightOfTheWolves/Bandit/SK_VillaHair")));
+	BanditHair->SetLightingChannels(true,false,true);
+	BanditHair->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BanditHair->SetCanEverAffectNavigation(false);
+	// Soft skylight under the brim also picks out the crossed leather on the shirt.
+	auto* Bounce = CreateDefaultSubobject<UPointLightComponent>(TEXT("BanditSkyBounce"));
+	Bounce->SetupAttachment(BanditRoot);
+	Bounce->SetRelativeLocation(FVector(116,-74,181));
+	Bounce->SetMobility(EComponentMobility::Movable);
+	Bounce->SetLightingChannels(false,false,true);
+	Bounce->SetIntensityUnits(ELightUnits::Candelas);
+	Bounce->SetIntensity(6.f);
+	Bounce->SetAttenuationRadius(280.f);
+	Bounce->SetSourceRadius(30.f);
+	Bounce->SetSoftSourceRadius(55.f);
+	Bounce->SetLightColor(FLinearColor(.88f,.90f,1.f));
+	Bounce->SetCastShadows(false);
+	Bounce->SetIndirectLightingIntensity(0.f);
+	Bounce->SetVolumetricScatteringIntensity(0.f);
+	Bounce->SetAffectTranslucentLighting(false);
+	Bounce->SetSpecularScale(.35f);
+
+	AimAnim = Asset<UAnimSequence>(TEXT("/Game/NightOfTheWolves/Bandit/A_BanditDemand"));
 	WalkAnim = Asset<UAnimSequence>(TEXT("/Game/Characters/Mannequins/Anims/Pistol/Walk/MF_Pistol_Walk_Fwd"));
 	StoopAnim = Asset<UAnimSequence>(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Land"));
 	DeathAnim = Asset<UAnimSequence>(TEXT("/Game/Characters/Mannequins/Anims/Death/MM_Death_Left_01"));
@@ -64,6 +125,11 @@ AFirstLegCrossing::AFirstLegCrossing()
 void AFirstLegCrossing::BeginPlay()
 {
 	Super::BeginPlay();
+	for (USoundBase* Recording : {DemandVoice.Get(), GoldVoice.Get(), StayVoice.Get()})
+		UGameplayStatics::PrimeSound(Recording);
+	BanditClothes->SetLeaderPoseComponent(Bandit);
+	BanditHair->SetLeaderPoseComponent(BanditFace);
+	BanditFace->AddTickPrerequisiteComponent(Bandit);
 	auto Tint = [this](FLinearColor Color) {
 		auto* Mat = UMaterialInstanceDynamic::Create(ShapeMat,this);
 		Mat->SetVectorParameterValue(TEXT("Color"),Color);
@@ -328,27 +394,33 @@ void AFirstLegCrossing::BuildProps()
 	{
 		auto* Marker=Part(Round,MoonGlow); Marker->SetWorldScale3D({.045,.075,.048}); TargetRing.Add(Marker);
 	}
-	BanditRoot=NewObject<USceneComponent>(this); BanditRoot->SetupAttachment(RootComponent);
-	AddInstanceComponent(BanditRoot); BanditRoot->RegisterComponent();
-	Speech=NewObject<UAudioComponent>(this);
+	Speech=NewObject<UDialogueVoiceComponent>(this, TEXT("BanditVoice"));
 	Speech->SetupAttachment(BanditRoot); Speech->SetRelativeLocation(FVector(0,0,155));
 	Speech->bAutoActivate=false; Speech->bOverrideAttenuation=true;
 	Speech->AttenuationOverrides.AttenuationShapeExtents=FVector(500);
-	Speech->AttenuationOverrides.FalloffDistance=1800;
+	// His last order carries down the open trail as Max runs out of the clearing.
+	Speech->AttenuationOverrides.FalloffDistance=4300;
 	Speech->SetVolumeMultiplier(.72f);
 	AddInstanceComponent(Speech); Speech->RegisterComponent();
-	Bandit=NewObject<USkeletalMeshComponent>(this); Bandit->SetupAttachment(BanditRoot);
-	Bandit->SetSkeletalMesh(BanditMesh); Bandit->SetRelativeRotation({0,-90,0});
-	Bandit->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	AddInstanceComponent(Bandit); Bandit->RegisterComponent();
-	auto* Gun=Part(Cube,BlackMat);
-	Gun->AttachToComponent(Bandit,FAttachmentTransformRules::KeepRelativeTransform,TEXT("hand_r"));
-	Gun->SetRelativeLocation({8,1,-5}); Gun->SetRelativeScale3D({.26,.045,.09});
-	auto* Hat=Part(Pole,BlackMat);
-	Hat->AttachToComponent(Bandit,FAttachmentTransformRules::KeepRelativeTransform,TEXT("head"));
-	Hat->SetRelativeLocation({0,1,18}); Hat->SetRelativeScale3D({.44,.44,.042});
-	auto* Crown=Part(Round,BlackMat);
-	Crown->AttachToComponent(Bandit,FAttachmentTransformRules::KeepRelativeTransform,TEXT("head"));
-	Crown->SetRelativeLocation({0,1,22}); Crown->SetRelativeScale3D({.28,.28,.17});
+	Speech->BindFace(BanditFace);
+	// The source pistol animation has a prop socket; the MetaHuman hand omits
+	// that helper. Use its measured transform in hand space to retain the grip.
+	auto* Grip = NewObject<USceneComponent>(this, TEXT("HeldSidearm"));
+	Grip->SetupAttachment(Bandit, TEXT("hand_r"));
+	Grip->SetRelativeLocationAndRotation(FVector(-7.31,3.65,-1.43),FRotator(-5.78,176.37,3.24));
+	AddInstanceComponent(Grip);
+	Grip->RegisterComponent();
+	auto* Handle = Part(Round,Bark,Grip);
+	Handle->SetRelativeLocationAndRotation(FVector(0,0,.5),FRotator(-16,0,0));
+	Handle->SetRelativeScale3D(FVector(.052,.037,.123));
+	auto* Frame = Part(Cube,BlackMat,Grip);
+	Frame->SetRelativeLocation(FVector(4,0,5));
+	Frame->SetRelativeScale3D(FVector(.12,.034,.049));
+	auto* Cylinder = Part(Pole,BlackMat,Grip);
+	Cylinder->SetRelativeLocationAndRotation(FVector(7,0,5.5),FRotator(90,0,0));
+	Cylinder->SetRelativeScale3D(FVector(.058,.058,.061));
+	auto* Barrel = Part(Pole,BlackMat,Grip);
+	Barrel->SetRelativeLocationAndRotation(FVector(16,0,7),FRotator(90,0,0));
+	Barrel->SetRelativeScale3D(FVector(.025,.025,.145));
 	Pack->SpawnMembers();
 }

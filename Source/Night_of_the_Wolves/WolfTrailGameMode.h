@@ -60,8 +60,6 @@ public:
 	FVector CabinDoorLocation = FVector(2450,0,100);
 	UPROPERTY(EditDefaultsOnly, Category="Cottage")
 	FVector ShovelLocation = FVector(2390,310,65);
-	UPROPERTY(EditDefaultsOnly, Category="Cottage")
-	FVector PitLocation = FVector(2260,0,0);
 	UPROPERTY(EditDefaultsOnly, Category="Presentation")
 	TObjectPtr<USoundBase> WolfHowls;
 	UPROPERTY(EditDefaultsOnly, Category="Presentation")
@@ -134,6 +132,7 @@ private:
 	float DigElapsed = -1;
 	float HermitElapsed = -1;
 	bool bHermitFired = false;
+	bool bHermitShouted = false;
 	float DoorImpactIn = 0;
 	float NoticeRemaining = 0;
 	FString Notice;

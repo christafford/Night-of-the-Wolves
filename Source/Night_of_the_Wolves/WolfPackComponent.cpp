@@ -69,12 +69,21 @@ UWolfMeshComponent* UWolfPackComponent::GetLeadWolf() const
 	return bPlaced && !Wolves.IsEmpty() && Wolves[0]->IsVisible() ? Wolves[0].Get() : nullptr;
 }
 
+bool UWolfPackComponent::TraceSolidTerrain(FHitResult& Hit, const FVector& From, const FVector& To) const
+{
+	// Forest generation volumes are WorldStatic too. Only physical terrain and
+	// obstacles that block a pawn should affect where a wolf puts its feet.
+	FCollisionResponseParams Solid(ECR_Ignore);
+	Solid.CollisionResponse.SetResponse(ECC_WorldStatic,ECR_Block);
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(WolfTerrain),false,GetOwner());
+	return GetWorld()->LineTraceSingleByChannel(Hit,From,To,ECC_Pawn,Params,Solid);
+}
+
 FVector UWolfPackComponent::FeetOnGround(FVector P) const
 {
 	FHitResult Hit;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(WolfGround),false,GetOwner());
-	if (GetWorld()->LineTraceSingleByObjectType(Hit, P+FVector(0,0,55), P-FVector(0,0,100),
-		FCollisionObjectQueryParams(ECC_WorldStatic), Params) && !Hit.bStartPenetrating && Hit.ImpactNormal.Z>.65 && Hit.ImpactPoint.Z <= P.Z+23.)
+	if (TraceSolidTerrain(Hit,P+FVector(0,0,55),P-FVector(0,0,100))
+		&& !Hit.bStartPenetrating && Hit.ImpactNormal.Z>.65 && Hit.ImpactPoint.Z <= P.Z+23.)
 	{
 		P.Z = Hit.ImpactPoint.Z;
 	}
@@ -87,9 +96,8 @@ FVector UWolfPackComponent::AvoidObstacle(FVector From, FVector Toward, float Si
 	const FVector Snout = From+FVector(0,0,42);
 	const double LookAhead = FMath::Min(105., FVector::Dist2D(From,Toward));
 	FHitResult Hit;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(WolfFlank),false,GetOwner());
-	if (LookAhead > 20. && GetWorld()->LineTraceSingleByObjectType(Hit, Snout, Snout+Travel*LookAhead,
-		FCollisionObjectQueryParams(ECC_WorldStatic), Params) && !Hit.bStartPenetrating && Hit.ImpactNormal.Z < .55)
+	if (LookAhead > 20. && TraceSolidTerrain(Hit,Snout,Snout+Travel*LookAhead)
+		&& !Hit.bStartPenetrating && Hit.ImpactNormal.Z < .55)
 	{
 		const FVector Normal = Hit.ImpactNormal.GetSafeNormal2D();
 		FVector Tangent(-Normal.Y,Normal.X,0);
@@ -180,10 +188,11 @@ void UWolfPackComponent::Hunt(float Dt, FVector Lead, FVector Heading, FVector Q
 void UWolfPackComponent::GuardDoor(float Dt, FVector Door, bool bRepelled)
 {
 	if (Wolves.IsEmpty()) return;
-	// x=2450 is the door plane; the dug hollow is at x=2260, y=0. Leave its
-	// center, both jambs, and the flame-side exit clear for the capsule.
-	static const FVector Guard[] = {{-84,51,0},{-148,-137,0},{-157,161,0}};
-	static const FVector Retreat[] = {{-192,248,0},{-230,-284,0},{-295,354,0}};
+	// The hollow runs from the threshold to the yard lip 190 cm out and is
+	// 320 cm wide. The leader faces the door across it; each flanker holds
+	// a solid side. Their backing paths leave Max a clear landing in the middle.
+	static const FVector Guard[] = {{-270,35,0},{-145,-235,0},{-156,244,0}};
+	static const FVector Retreat[] = {{-335,248,0},{-230,-315,0},{-223,370,0}};
 	const FVector HingeFeet(Door.X,Door.Y,0);
 	PlaceMoonBounce(HingeFeet);
 	for (int32 I=0; I<Wolves.Num(); ++I)

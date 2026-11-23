@@ -30,11 +30,7 @@ AWolfCottageSet::AWolfCottageSet()
 	static ConstructorHelpers::FObjectFinder<USoundBase> Growl(TEXT("/Game/NightOfTheWolves/FirstLeg/Growl"));
 	static ConstructorHelpers::FObjectFinder<USoundBase> Hearth(TEXT("/Game/NightOfTheWolves/FirstLeg/Hearth"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Stone(TEXT("/Game/NightOfTheWolves/Presentation/M_CabinStone"));
-	static ConstructorHelpers::FObjectFinder<USoundBase> Warning(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/HermitWarning"));
-	static ConstructorHelpers::FObjectFinder<USoundBase> Shout(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/HermitShout"));
-	static ConstructorHelpers::FObjectFinder<USoundBase> Trapped(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/HermitPit"));
 	Masonry=Stone.Object;
-	WarningVoice=Warning.Object; ShoutVoice=Shout.Object; TrappedVoice=Trapped.Object;
 	ImpactSound=Impact.Object; GrowlSound=Growl.Object; FireSound=Hearth.Object;
 }
 
@@ -46,11 +42,6 @@ void AWolfCottageSet::BeginPlay()
 	Nearby->Attenuation.FalloffDistance=1550;
 	Nearby->Attenuation.bSpatialize=true;
 	Nearby->Attenuation.bAttenuate=true;
-	VoiceAudio=NewObject<UAudioComponent>(this);
-	VoiceAudio->SetupAttachment(GetRootComponent());
-	VoiceAudio->bAutoActivate=false;
-	VoiceAudio->AttenuationSettings=Nearby;
-	VoiceAudio->RegisterComponent();
 	if (FireSound) UGameplayStatics::SpawnSoundAtLocation(this,FireSound,FVector(3065,220,80),FRotator::ZeroRotator,.35f,1,0,Nearby);
 	auto ActorsWith=[this](FName Tag,TArray<TObjectPtr<AActor>>& Dest)
 	{
@@ -59,6 +50,8 @@ void AWolfCottageSet::BeginPlay()
 		for (AActor* A:Found) Dest.Add(A);
 	};
 	ActorsWith(TEXT("M2Door"),DoorActors); ActorsWith(TEXT("M3PitCover"),PitCover);
+	for (const AActor* Cover : PitCover)
+		PitBounds += Cover->GetComponentsBoundingBox(true);
 	ActorsWith(TEXT("M3Shovel"),Shovel); ActorsWith(TEXT("M2Hermit"),OldHermit);
 	for (AActor* A:OldHermit) { A->SetActorHiddenInGame(true); A->SetActorEnableCollision(false); }
 	auto Dye=[this](FLinearColor Color)
@@ -131,22 +124,28 @@ void AWolfCottageSet::BuildProps()
 			FVector(.08,.10,.06));
 	Brand.Add(Stick(FVector(2973,192,51),FVector(3058,216,72),11,Bark));
 	Brand.Add(Piece(Ball,Fire,FVector(3058,216,74),FVector(.15,.14,.22)));
-	// The six warped planks span the same 120 x 160 cm opening as the physical cover.
-	// Small gaps, broken ends and iron nail heads keep the rotten patch readable underfoot.
-	const float Lengths[] = {143,155,143,136,153,145};
-	for (int I=0; I<6; ++I)
+	// Span the physical cover with weathered boards running from the yard to the sill.
+	if (PitBounds.IsValid)
 	{
-		const FVector Centre(2211+I*19.5, (I%2 ? -5 : 5), 2.3f + (I%3)*.32f);
-		auto* Board = Piece(Cube,Bark,Centre,FVector(.17f,Lengths[I]/100.f,.035f),FRotator(0,(I%3-1)*2.5f,0));
-		WeakPlanks.Add(Board);
-		for (int End : {-1,1})
+		const FVector Surface = PitSurface();
+		const FVector Size = PitBounds.GetSize();
+		const int32 Count = FMath::Max(1,FMath::RoundToInt(Size.Y / 23.0));
+		const double Spacing = Size.Y / Count;
+		for (int32 I=0; I<Count; ++I)
 		{
-			auto* Nail = Piece(Tube,Iron,FVector::ZeroVector,FVector::OneVector);
-			// Preserve the nail proportions independently of the thin board's nonuniform scale.
-			Nail->SetAbsolute(false,false,true);
-			Nail->AttachToComponent(Board,FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-			Nail->SetRelativeLocation(FVector(0,End*42.f,53.f));
-			Nail->SetWorldScale3D(FVector(.026f,.026f,.007f));
+			const double Y = PitBounds.Min.Y + (I+.5)*Spacing;
+			const double Length = Size.X - (I*7 % 17);
+			const FVector Centre(Surface.X + (I%3-1)*2.0,Y,Surface.Z+2.3+(I%3)*.32);
+			auto* Board = Piece(Cube,Bark,Centre,FVector(Length/100.,Spacing*.0088,.035),FRotator(0,(I%3-1)*1.5,0));
+			WeakPlanks.Add(Board);
+			for (int End : {-1,1})
+			{
+				auto* Nail = Piece(Tube,Iron,FVector::ZeroVector,FVector::OneVector);
+				Nail->SetAbsolute(false,false,true);
+				Nail->AttachToComponent(Board,FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+				Nail->SetRelativeLocation(FVector(End*42.f,0,53.f));
+				Nail->SetWorldScale3D(FVector(.026f,.026f,.007f));
+			}
 		}
 	}
 	Bar=Piece(Cube,Bark,FVector(2478,0,122),FVector(.14,2.18,.16));
@@ -191,7 +190,7 @@ void AWolfCottageSet::SetPit(bool bDug)
 	for (int I=0; I<WeakPlanks.Num(); ++I)
 	{
 		WeakPlanks[I]->SetVisibility(!bDug,true);
-		WeakPlanks[I]->SetRelativeRotation(FRotator(0,(I%3-1)*2.5f,0));
+		WeakPlanks[I]->SetRelativeRotation(FRotator(0,(I%3-1)*1.5f,0));
 	}
 }
 void AWolfCottageSet::SetShovel(bool bVisible){ for(AActor* A:Shovel) A->SetActorHiddenInGame(!bVisible); }
@@ -206,14 +205,14 @@ void AWolfCottageSet::Door(bool bOpen,bool bBarred)
 void AWolfCottageSet::SwingDoor(float Fraction)
 {
 	const FRotator Swing(0,-90.f * FMath::SmoothStep(0.f,1.f,Fraction),0);
-	const FVector Hinge(2450,-90,125);
 	for (AActor* Panel : DoorActors)
+	{
+		const FVector Hinge(2450,-90,Panel->GetActorLocation().Z);
 		Panel->SetActorLocationAndRotation(Hinge + Swing.RotateVector(FVector(0,90,0)),Swing);
+	}
 }
 void AWolfCottageSet::RestoreProps(bool bCaughtBefore)
 {
-	bWarned=bCaughtBefore;
-	if(VoiceAudio) VoiceAudio->Stop();
 	WindowWarning->SetVisibility(!bCaughtBefore,true);
 	NextGrowl=0; HidePack();
 }
@@ -223,7 +222,7 @@ void AWolfCottageSet::Animate(float T,float DigTime,float Health,bool bBarred)
 		WindowWarning->SetRelativeLocation(FVector(2511,220+7*FMath::Sin(T*1.5),171));
 	if(DigTime>=0 && !bPitOpen)
 		for(int I=0;I<WeakPlanks.Num();I++)
-			WeakPlanks[I]->SetRelativeRotation(FRotator(FMath::Sin(DigTime*8+I)*9, (I%3-1)*2.5f,0));
+			WeakPlanks[I]->SetRelativeRotation(FRotator(FMath::Sin(DigTime*8+I)*9, (I%3-1)*1.5f,0));
 	if(bBarred)
 	{
 		const float Damage=1-FMath::Clamp(Health,0.f,1.f);
@@ -251,13 +250,16 @@ void AWolfCottageSet::TrailPack(AWolfTrailRoute* Route,float Distance,const FVec
 	Growl(Lead,Threat);
 }
 
-void AWolfCottageSet::YardPack(const FVector& Target,float Separation,bool bBurning)
+void AWolfCottageSet::YardPack(const AWolfTrailRoute* Route,const FVector& Target,float Separation,bool bBurning)
 {
 	const FVector D = FVector(1,.24,0).GetSafeNormal();
 	const float Fraction = FMath::Clamp(Separation,0.f,1.f);
 	const float Gap = 195.f + Fraction*(bBurning ? 1050.f : 1400.f);
 	FVector Lead = Target - D*Gap;
-	Lead.Z = Target.Z - 92.f;
+	// Ground the pack at its own end of the yard, even when Max jumps the hollow.
+	Lead.Z = GetActorLocation().Z;
+	if (Route && Route->Spline)
+		Lead.Z = Route->Spline->FindLocationClosestToWorldLocation(Lead,ESplineCoordinateSpace::World).Z;
 	const float Threat = (1.f-Fraction)*(bBurning ? .62f : 1.f);
 	Pack->Hunt(GetWorld()->GetDeltaSeconds(),Lead,D,Target,Threat);
 	Growl(Lead,Threat);
@@ -326,24 +328,7 @@ void AWolfCottageSet::BuildRoof()
 	Piece(Cube,Iron,FVector(3140,218,660),FVector(.86,.90,.04));
 }
 
-void AWolfCottageSet::Speak(USoundBase* Line,FVector P,float Volume)
-{
-	if(!Line || !VoiceAudio) return;
-	VoiceAudio->Stop();
-	VoiceAudio->SetSound(Line);
-	VoiceAudio->SetWorldLocation(P);
-	VoiceAudio->SetVolumeMultiplier(Volume);
-	VoiceAudio->Play();
-}
-void AWolfCottageSet::WarnAtWindow()
-{
-	if(bWarned) return;
-	bWarned=true;
-	Speak(WarningVoice,FVector(2470,220,177),.76f);
-}
-void AWolfCottageSet::ShoutAtDoor()
+void AWolfCottageSet::HideWindowBarrel()
 {
 	WindowWarning->SetVisibility(false,true);
-	Speak(ShoutVoice,FVector(2540,0,155),1.f);
 }
-void AWolfCottageSet::CurseFromPit() { Speak(TrappedVoice,FVector(2260,0,-102),.79f); }

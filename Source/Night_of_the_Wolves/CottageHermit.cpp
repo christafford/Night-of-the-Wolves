@@ -1,4 +1,6 @@
 #include "CottageHermit.h"
+#include "DialogueVoiceComponent.h"
+#include "DialogueFaceAnimInstance.h"
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimSequence.h"
@@ -38,10 +40,9 @@ ACottageHermit::ACottageHermit()
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> BodyMesh(TEXT("/Game/NightOfTheWolves/Max/Wardrobe/SK_MaxExposedBody"));
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> FaceMesh(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/Hermit_Head"));
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> Clothes(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/SK_HermitWorkwear"));
-	static ConstructorHelpers::FClassFinder<UAnimInstance> CopyPose(TEXT("/MetaHumanCharacter/Face/ABP_Face"));
 	Body->SetSkeletalMesh(BodyMesh.Object);
 	Face->SetSkeletalMesh(FaceMesh.Object);
-	Face->SetAnimInstanceClass(CopyPose.Class);
+	Face->SetAnimInstanceClass(UDialogueFaceAnimInstance::StaticClass());
 	Workwear->SetSkeletalMesh(Clothes.Object);
 	for (auto* Part : {Body.Get(), Face.Get(), Workwear.Get()})
 	{
@@ -52,21 +53,35 @@ ACottageHermit::ACottageHermit()
 	Face->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> Hold(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/A_HermitAim"));
 	static ConstructorHelpers::FObjectFinder<UAnimSequence> Run(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/A_HermitJog"));
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> Slump(TEXT("/Game/Characters/Mannequins/Anims/Death/MM_Death_Left_01"));
 	static ConstructorHelpers::FObjectFinder<USoundBase> Report(TEXT("/Game/NightOfTheWolves/FirstLeg/Shot"));
 	Aim = Hold.Object;
 	Jog = Run.Object;
+	Collapse = Slump.Object;
 	Shot = Report.Object;
+	static ConstructorHelpers::FObjectFinder<USoundBase> Warning(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/HermitWarning"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> Shout(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/HermitShout"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> Pit(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/HermitPit"));
+	static ConstructorHelpers::FObjectFinder<USoundBase> Yell(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/SC_HermitFallYell"));
+	WarningVoice = Warning.Object;
+	ShoutVoice = Shout.Object;
+	PitVoice = Pit.Object;
+	FallYell = Yell.Object;
+	Voice = CreateDefaultSubobject<UDialogueVoiceComponent>(TEXT("HermitVoice"));
+	Voice->SetupAttachment(GetRootComponent());
+	Voice->bOverrideAttenuation = true;
+	Voice->AttenuationOverrides.AttenuationShapeExtents = FVector(380,0,0);
+	Voice->AttenuationOverrides.FalloffDistance = 1550.f;
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> HatMesh(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/SM_HermitFeltHat"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> BeardMesh(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/SM_HermitWhiskers"));
-	auto Headwear = [this](FName Name, UStaticMesh* Mesh)
-	{
-		auto* Part = CreateDefaultSubobject<UStaticMeshComponent>(Name);
-		Part->SetupAttachment(Face,TEXT("head"));
-		Part->SetStaticMesh(Mesh);
-		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	};
-	Headwear(TEXT("Felt hat"), HatMesh.Object);
-	Headwear(TEXT("Beard, hair and moustache"), BeardMesh.Object);
+	auto* Hat = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Felt hat"));
+	Hat->SetupAttachment(Face, TEXT("head"));
+	Hat->SetStaticMesh(HatMesh.Object);
+	Hat->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> BeardMesh(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/SK_HermitWhiskers"));
+	Whiskers = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Animated whiskers"));
+	Whiskers->SetupAttachment(Face);
+	Whiskers->SetSkeletalMesh(BeardMesh.Object);
+	Whiskers->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	Shotgun = CreateDefaultSubobject<USceneComponent>(TEXT("Held shotgun"));
 	Shotgun->SetupAttachment(GetRootComponent());
@@ -103,24 +118,84 @@ ACottageHermit::ACottageHermit()
 void ACottageHermit::BeginPlay()
 {
 	Super::BeginPlay();
+	for (USoundBase* Cue : {WarningVoice.Get(), ShoutVoice.Get(), PitVoice.Get(), FallYell.Get(), Shot.Get()})
+		UGameplayStatics::PrimeSound(Cue);
 	Workwear->SetLeaderPoseComponent(Body);
+	Whiskers->SetLeaderPoseComponent(Face);
 	Face->AddTickPrerequisiteComponent(Body);
+	Voice->BindFace(Face);
 	Camera = GetWorld()->SpawnActor<ACameraActor>();
 	Camera->GetCameraComponent()->SetFieldOfView(57.f);
 }
 
-void ACottageHermit::RestoreEncounter(bool bTrapped, FVector Door, FVector Hollow)
+void ACottageHermit::RestoreEncounter(bool bTrapped, FVector Door, FVector Hollow, float HalfWidth)
 {
+	StopSpeech();
+	bWarned = bTrapped;
 	EndReveal(false);
 	Doorway = FVector(Door.X+150, Door.Y, Hollow.Z);
 	Timbers = Hollow;
+	HollowHalfWidth = HalfWidth;
 	bRunning = false;
+	Body->SetRelativeLocation(FVector::ZeroVector);
 	Body->PlayAnimation(Aim, true);
 	Stage(bTrapped ? 1.f : 0.f, 0.f, bTrapped ? 1.f : 0.f);
+	if (bTrapped) RestInPit();
 	SetActorHiddenInGame(!bTrapped);
 	Flash->SetVisibility(false);
 	FlashSeconds = 0.f;
 	SetActorTickEnabled(bTrapped);
+}
+
+void ACottageHermit::WarnAtWindow()
+{
+	if (bWarned) return;
+	bWarned = true;
+	Voice->SetWorldLocation(FVector(2470,220,177));
+	Voice->SetVolumeMultiplier(.76f);
+	Voice->SetMood(.42f, 0.f);
+	Voice->PlayLine(WarningVoice, EDialogueLine::HermitWarning);
+}
+
+void ACottageHermit::ShoutAtMax()
+{
+	Voice->SetWorldLocation(Face->GetSocketLocation(TEXT("head")));
+	Voice->SetVolumeMultiplier(1.f);
+	Voice->SetMood(1.f, 0.f);
+	Voice->PlayLine(ShoutVoice, EDialogueLine::HermitShout);
+}
+
+void ACottageHermit::CryFromPit()
+{
+	Voice->SetWorldLocation(Face->GetSocketLocation(TEXT("head")));
+	Voice->SetVolumeMultiplier(.79f);
+	Voice->SetMood(.65f, 0.f);
+	Voice->PlayLine(PitVoice, EDialogueLine::HermitPit);
+}
+
+void ACottageHermit::LoseFooting()
+{
+	if (Collapse) Body->PlayAnimation(Collapse, false);
+	Voice->SetWorldLocation(Face->GetSocketLocation(TEXT("head")));
+	Voice->SetVolumeMultiplier(1.f);
+	Voice->SetMood(0.f, 0.f);
+	Voice->PlayLine(FallYell, EDialogueLine::HermitFallYell);
+}
+
+void ACottageHermit::RestInPit()
+{
+	StopSpeech();
+	if (Collapse)
+	{
+		Body->PlayAnimation(Collapse, false);
+		Body->SetPosition(Collapse->GetPlayLength(), false);
+		Body->SetPlayRate(0.f);
+	}
+}
+
+void ACottageHermit::StopSpeech()
+{
+	Voice->ResetPerformance();
 }
 
 void ACottageHermit::AnswerKnock(APawn& Max)
@@ -129,7 +204,7 @@ void ACottageHermit::AnswerKnock(APawn& Max)
 	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	Face->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	const float Side = Max.GetActorLocation().Y < Timbers.Y ? -1.f : 1.f;
-	SidestepY = Timbers.Y + Side*146.f;
+	SidestepY = Timbers.Y + Side*(HollowHalfWidth + 65.f);
 	bHoldingMark = false;
 	// On Max's side of the action, the hermit's turn brings his expression
 	// and gun into three-quarter view, with the jamb and boards in the frame.
@@ -202,18 +277,40 @@ void ACottageHermit::Stage(float Run, float Turn, float Drop)
 void ACottageHermit::Tick(float Dt)
 {
 	Super::Tick(Dt);
+	if (Fall > .60f)
+	{
+		// This collapse was authored on level ground and travels sideways. Let him fold
+		// into the narrow excavation without carrying his upper body under solid earth.
+		const FVector ChestOffset = Body->GetSocketLocation(TEXT("spine_05")) - Body->GetComponentLocation();
+		const float Slide = FMath::SmoothStep(.60f, .98f, Fall);
+		Body->SetWorldLocation(GetActorLocation() - FVector(ChestOffset.X, ChestOffset.Y, 0.f) * Slide);
+	}
 	// Both animated hands define the prop's carry direction. The same grip works
 	// in the across-body running pose and the shouldered aiming pose.
 	const FVector Right = Body->GetSocketLocation(TEXT("index_01_r"));
 	const FVector Left = Body->GetSocketLocation(TEXT("index_01_l"));
 	const FVector Forward = (Left-Right).GetSafeNormal();
 	const FRotator Grip = FRotationMatrix::MakeFromXZ(Forward,FVector::UpVector).Rotator();
-	Shotgun->SetWorldLocationAndRotation(Right,Grip);
+	// The stock slips from his supporting hand as he topples into the hollow.
+	const float Slip = FMath::SmoothStep(.40f, .98f, Fall);
+	const FTransform GripTransform(Grip, Right);
+	const FRotator Tumble(83.f * Slip, 29.f * Slip, 65.f * Slip);
+	Shotgun->SetWorldLocationAndRotation(GripTransform.TransformPosition(FVector(0, 0, -18.f * Slip)),
+		GripTransform.GetRotation() * Tumble.Quaternion());
 	if (Viewer.IsValid())
 	{
-		const FVector Focus = GetActorLocation() + FVector(0,0,97.f + 27.f * AimFraming + 60.f * Fall * Fall);
+		const float OverRim = FMath::SmoothStep(.60f, .99f, Fall);
+		if (OverRim > 0.f)
+		{
+			const float Side = FMath::Sign(SidestepY - Timbers.Y);
+			const FVector YardAngle(-110.f, Side * 327.f, 137.f);
+			const FVector AboveHollow(-55.f, Side * HollowHalfWidth * .68f, 153.f);
+			Camera->SetActorLocation(Timbers + FMath::Lerp(YardAngle, AboveHollow, OverRim));
+		}
+		const FVector StandingFocus = GetActorLocation() + FVector(0,0,97.f + 27.f * AimFraming + 60.f * Fall * Fall);
+		const FVector Focus = FMath::Lerp(StandingFocus, Face->GetSocketLocation(TEXT("head")), OverRim);
 		const FRotator Look = (Focus-Camera->GetActorLocation()).Rotation();
-		Camera->SetActorRotation(FMath::RInterpTo(Camera->GetActorRotation(),Look,Dt,3.f));
+		Camera->SetActorRotation(FMath::RInterpTo(Camera->GetActorRotation(),Look,Dt,3.f + 6.f * OverRim));
 #if !UE_BUILD_SHIPPING
 		// The recovery-test screenshot uses the same animated figure and cottage practicals.
 		static const bool bReviewPortrait = FParse::Param(FCommandLine::Get(), TEXT("HermitPortrait"));
