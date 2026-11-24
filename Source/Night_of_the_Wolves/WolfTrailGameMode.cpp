@@ -9,6 +9,7 @@
 #include "DialogueArticulation.h"
 #include "FirstLegCrossing.h"
 #include "StormfallSet.h"
+#include "HighWaterChamber.h"
 #include "StormfallLayout.h"
 #include "RiverDrowningShot.h"
 #include "Night_of_the_WolvesCharacter.h"
@@ -89,6 +90,7 @@ void AWolfTrailGameMode::BeginPlay()
 	Hermit = GetWorld()->SpawnActor<ACottageHermit>();
 	Crossing = GetWorld()->SpawnActor<AFirstLegCrossing>();
 	Storm = GetWorld()->SpawnActor<AStormfallSet>(StormfallLayout::Mouth, StormfallLayout::Facing);
+	SurveyChamber = GetWorld()->SpawnActor<AHighWaterChamber>(StormfallLayout::Mouth, StormfallLayout::Facing);
 #if !UE_BUILD_SHIPPING
 	bFirstLegTest = FParse::Param(FCommandLine::Get(),TEXT("FirstLegTest"));
 	bCottageTest = FParse::Param(FCommandLine::Get(),TEXT("M3SelfTest"));
@@ -170,7 +172,8 @@ void AWolfTrailGameMode::StartPursuitMusic()
 
 bool AWolfTrailGameMode::IsTraversalLocked() const
 {
-	return IsOpeningCinematicPlaying() || bHermitReacting || DigElapsed >= 0 || (Crossing && Crossing->IsTraversalLocked());
+	return IsOpeningCinematicPlaying() || IsKnocking() || bHermitReacting || DigElapsed >= 0 || (Crossing && Crossing->IsTraversalLocked())
+		|| (SurveyChamber && (SurveyChamber->IsShoving() || SurveyChamber->IsClimbing() || SurveyChamber->IsSwimmingOut() || SurveyChamber->IsFramingRefill()));
 }
 bool AWolfTrailGameMode::IsWatchingCreekPack() const
 {
@@ -187,7 +190,7 @@ void AWolfTrailGameMode::StartPlay()
 void AWolfTrailGameMode::InitializeTrail()
 {
 	APawn* Pawn = UGameplayStatics::GetPlayerPawn(this,0);
-	if (!Pawn || !Pawn->IsPlayerControlled() || !Cottage || !Hermit || !Crossing || !Storm) return;
+	if (!Pawn || !Pawn->IsPlayerControlled() || !Cottage || !Hermit || !Crossing || !Storm || !SurveyChamber) return;
 	CheckpointTransform = Pawn->GetActorTransform();
 	StartDistance = RouteDistance(Pawn->GetActorLocation());
 	RestoreWorld(0);
@@ -227,6 +230,7 @@ void AWolfTrailGameMode::Tick(float Dt)
 	if (Checkpoint >= 5)
 	{
 		UpdateStormfall(Dt, *Pawn);
+		if (Checkpoint >= 6 && !IsDead()) SurveyChamber->Update(*this, *Pawn, Dt);
 		if (NoticeRemaining > 0 && !IsDead()) ThreatCue = Notice;
 		return;
 	}
@@ -249,6 +253,7 @@ void AWolfTrailGameMode::UpdateCottage(float Dt,APawn& Pawn)
 		Die(TEXT("The hollow gave way beneath you"));
 		return;
 	}
+	if (IsKnocking()) UpdateKnock(*CastChecked<ANight_of_the_WolvesCharacter>(&Pawn), Dt);
 	if (DigElapsed >= 0)
 	{
 		const float PreviousCycle = MaxDigStroke::Cycle(DigElapsed / DigSeconds);
@@ -387,18 +392,18 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 	}
 	if (!bSheltered)
 	{
-		if (!bHermitReacting) ExteriorRemaining -= Dt;
+		if (!bHermitReacting && !IsKnocking()) ExteriorRemaining -= Dt;
 		if (bDoorwayGuarded) Cottage->DoorPack(CabinDoorLocation,false);
 		else Cottage->YardPack(Route.Get(),ExteriorRemaining/ExteriorSeconds,false);
 		if (ExteriorRemaining < 6) ThreatCue = TEXT("A wolf breaks cover and runs at you.");
 		else if (ExteriorRemaining < 16) ThreatCue = TEXT("Growls sound just beyond the yard.");
-		else if (Near(P,FVector(2390,220,0),330) && !bHermitReacting && !bHermitTrapped)
+		else if (Near(P,FVector(2390,220,0),330) && !bHermitReacting && !IsKnocking() && !bHermitTrapped)
 			{
 			Hermit->WarnAtWindow();
 			ThreatCue = TEXT("Behind the glass: a gun barrel. “Stay away from my door.”");
 		}
 		if (bHermitReacting) ThreatCue = HermitElapsed < HermitReactionSeconds ? TEXT("Heavy boots behind the door.") : TEXT("");
-		if (ExteriorRemaining <= 0) PresentWolfCapture();
+		if (ExteriorRemaining <= 0 && !IsKnocking() && !bHermitReacting) PresentWolfCapture();
 		return;
 	}
 	if (!bDoorOpen)
@@ -447,7 +452,7 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 AWolfTrailGameMode::ETarget AWolfTrailGameMode::Target(const APawn& Pawn,bool bItem) const
 {
 	const FVector P = Pawn.GetActorLocation();
-	if (bHermitReacting || DigElapsed >= 0 || IsDead()) return ETarget::None;
+	if (IsKnocking() || bHermitReacting || DigElapsed >= 0 || IsDead()) return ETarget::None;
 	if (bItem && bSheltered && IsInside(P) && Near(P,HearthPosition,158) && Inventory.Has(TEXT("Firebrand")) && !Inventory.bBurning) return ETarget::Brand;
 	if (bItem)
 	{
@@ -505,7 +510,7 @@ void AWolfTrailGameMode::Act(bool bItem)
 	if (!Pawn) return;
 	if (Checkpoint >= 5)
 	{
-		StormAction(*Pawn,bItem);
+		if (Checkpoint < 6 || !SurveyChamber->Act(*this,*Pawn,bItem)) StormAction(*Pawn,bItem);
 		return;
 	}
 	if (Crossing->TryAction(*this,*Pawn,bItem)) return;
@@ -537,13 +542,7 @@ void AWolfTrailGameMode::Act(bool bItem)
 		}
 		break;
 	case ETarget::Knock:
-		Cottage->HideWindowBarrel();
-		Cottage->Impact(CabinDoorLocation,.75f,1.2f);
-		bHermitReacting = true;
-		bHermitFired = false;
-		bHermitShouted = false;
-		HermitElapsed = 0;
-		Hermit->AnswerKnock(*Pawn);
+		if (auto* Max = Cast<ANight_of_the_WolvesCharacter>(Pawn)) BeginKnock(*Max);
 		break;
 	case ETarget::Bar:
 		bSheltered = true;
@@ -602,6 +601,7 @@ void AWolfTrailGameMode::Die(const FString& Cause)
 		if (!Max || !HuntingPack->ClaimCapture(*Max)) return;
 	}
 	DeathCause = Cause;
+	EndKnock();
 	if (Crossing) Crossing->InterruptEncounter();
 	if (Hermit) Hermit->StopSpeech();
 	bWolfCaptured = Cause == TEXT("Wolves");
@@ -658,12 +658,13 @@ void AWolfTrailGameMode::ShowDeathCard()
 }
 bool AWolfTrailGameMode::CommitCheckpoint(int32 Id,FVector Location,FRotator Facing)
 {
-	if (IsOpeningCinematicPlaying() || Id!=Checkpoint+1 || Id>6 || IsDead() || !GetWorld()->GetFirstPlayerController()) return false;
+	if (IsOpeningCinematicPlaying() || Id!=Checkpoint+1 || Id>7 || IsDead() || !GetWorld()->GetFirstPlayerController()) return false;
 	if (Id==2 && (!bHermitTrapped || !bSheltered)) return false;
 	if (Id==3 && (!Inventory.Has(TEXT("Gold")) || !Inventory.Has(TEXT("Rope")))) return false;
 	if (Id==4 && (!Inventory.Has(TEXT("Gold")) || Inventory.Has(TEXT("Rope")))) return false;
 	if (Id==5 && (!Crossing || !Crossing->HasSurvivedRobbery() || Inventory.Has(TEXT("Gold")))) return false;
 	if (Id==6 && (!bThroughRoots || !AreCaveRootsClear())) return false;
+	if (Id==7 && (!SurveyChamber->IsComplete() || !HasTreeFlame())) return false;
 	Checkpoint=Id;
 	CheckpointTransform=FTransform(Facing,Location);
 	CheckpointItems=Inventory;
@@ -708,12 +709,14 @@ void AWolfTrailGameMode::RestoreWorld(int32 Id)
 	SetDoorOpen(Id>=3);
 	Crossing->Restore(Id,CheckpointPouchSite);
 	ResetStormfall(Id);
+	SurveyChamber->RestoreSurvey(Id);
 }
 void AWolfTrailGameMode::RetryCheckpoint()
 {
 	APlayerController* PC=GetWorld()->GetFirstPlayerController();
 	if (!PC || IsOpeningCinematicPlaying()) return;
 	GetWorldTimerManager().ClearTimer(RetryTimer);
+	EndKnock();
 	Hermit->EndReveal(false);
 	// Recreate the pawn so jump state, velocity and spring-arm lag start cleanly.
 	if (APawn* Old=PC->GetPawn()) { PC->UnPossess(); Old->Destroy(); }

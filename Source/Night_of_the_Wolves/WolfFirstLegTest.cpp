@@ -4,8 +4,12 @@
 #include "FirstLegCrossing.h"
 #include "CottageHermit.h"
 #include "WolfCottageSet.h"
+#include "MaxDoorKnock.h"
+#include "Night_of_the_WolvesCharacter.h"
 #include "Night_of_the_WolvesPlayerController.h"
 #include "WolfTrailRoute.h"
+#include "Components/PoseableMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/SplineComponent.h"
 #include "Misc/Parse.h"
 #include "Misc/CommandLine.h"
@@ -16,6 +20,34 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 
+namespace
+{
+struct FKnockObservation
+{
+	float Closest[UE_ARRAY_COUNT(MaxDoorKnock::Hits)] = {MAX_flt, MAX_flt, MAX_flt};
+	float Recoil[2] = {};
+	float Lean = 0.f;
+	int32 Hits = 0;
+	bool bStarted = false;
+
+	void Sample(const ANight_of_the_WolvesCharacter& Max, const UPoseableMeshComponent& Body,
+		const FVector& Contact, float Phase)
+	{
+		const float Gap = FVector::Distance(Max.KnockingKnuckle(), Contact);
+		const FVector Forward = (Contact - Max.GetActorLocation()).GetSafeNormal2D();
+		const FVector ChestDelta = Body.GetSocketLocation(TEXT("spine_05")) - Max.GetMesh()->GetSocketLocation(TEXT("spine_05"));
+		Lean = FMath::Max(Lean, float(Forward.Dot(ChestDelta)));
+		for (int32 i = 0; i < UE_ARRAY_COUNT(MaxDoorKnock::Hits); ++i)
+		{
+			const float Beat = MaxDoorKnock::Hits[i];
+			if (FMath::Abs(Phase - Beat) <= .035f) Closest[i] = FMath::Min(Closest[i], Gap);
+			if (i > 0 && Phase > MaxDoorKnock::Hits[i-1] + .04f && Phase < Beat - .04f)
+				Recoil[i-1] = FMath::Max(Recoil[i-1], Gap);
+		}
+	}
+};
+}
+
 void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 {
 	TestElapsed += Dt;
@@ -25,6 +57,58 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 	};
 	if (TestElapsed > 235) { Fail(TEXT("timeout")); return; }
 	const FVector P=Pawn.GetActorLocation();
+	static FKnockObservation Knock;
+	if (IsKnocking())
+	{
+		if (!bRecoveryTest) return;
+		auto* Max = CastChecked<ANight_of_the_WolvesCharacter>(&Pawn);
+		APlayerController* PC = CastChecked<APlayerController>(Max->GetController());
+		if (bDoorOpen || bHermitReacting || PC->GetViewTarget() != Max || !Inventory.Equipped.IsNone())
+		{ Fail(TEXT("knock interrupted before the final rap")); return; }
+		Knock.bStarted = true;
+		const float Phase = KnockElapsed / KnockSeconds;
+		if (const UPoseableMeshComponent* Body = Max->GetKnockBody(); Body && Phase >= 0.f)
+			Knock.Sample(*Max, *Body, KnockContact, Phase);
+		if (KnockHits != Knock.Hits && (KnockHits != Knock.Hits + 1 ||
+			Knock.Hits >= UE_ARRAY_COUNT(MaxDoorKnock::Hits) ||
+			FMath::Abs(Phase - MaxDoorKnock::Hits[Knock.Hits]) > Dt / KnockSeconds + KINDA_SMALL_NUMBER))
+		{ Fail(TEXT("wood impact missed its strike frame")); return; }
+		Knock.Hits = KnockHits;
+		if (KnockHits > 0)
+		{
+			Interact();
+			UseEquipped();
+			Max->DoMove(1.f, 1.f);
+			Max->DoJumpStart();
+			Max->DoJumpEnd();
+			if (Max->CanJump() || !Max->GetPendingMovementInputVector().IsNearlyZero() || !IsKnocking())
+			{ Fail(TEXT("movement, jump or another action bypassed the knock")); return; }
+			if (TestStep == 45)
+			{
+				RetryCheckpoint();
+				const auto* Restored = Cast<ANight_of_the_WolvesCharacter>(PC->GetPawn());
+				if (IsKnocking() || bHermitReacting || bDoorOpen || Checkpoint != 1 || !Restored || Restored == Max ||
+					Restored->GetKnockBody() || PC->IsMoveInputIgnored() || PC->GetViewTarget() != Restored)
+				{ Fail(TEXT("CP1 retry during the knock left presentation or input active")); return; }
+				Knock = {};
+				TestStep = 46;
+				UE_LOG(LogTemp,Display,TEXT("COTTAGE KNOCK retry after first wood impact restored CP1 movement and camera"));
+			}
+		}
+		return;
+	}
+	if (bRecoveryTest && Knock.bStarted)
+	{
+		UE_LOG(LogTemp,Display,TEXT("COTTAGE KNOCK %s: %d raps, knuckle gaps %.1f/%.1f/%.1f cm, recoil %.1f/%.1f cm, forward lean %.1f cm"),
+			bPitDug ? TEXT("open hollow") : TEXT("covered boards"), Knock.Hits,
+			Knock.Closest[0],Knock.Closest[1],Knock.Closest[2],Knock.Recoil[0],Knock.Recoil[1],Knock.Lean);
+		if (Knock.Hits != UE_ARRAY_COUNT(MaxDoorKnock::Hits) || !bHermitReacting ||
+			CastChecked<ANight_of_the_WolvesCharacter>(&Pawn)->GetKnockBody() ||
+			FMath::Max3(Knock.Closest[0],Knock.Closest[1],Knock.Closest[2]) > 5.f ||
+			FMath::Min(Knock.Recoil[0],Knock.Recoil[1]) < 8.f || Knock.Lean < 2.f)
+		{ Fail(TEXT("three visible knuckle contacts, retractions, forward lean and handoff")); return; }
+		Knock = {};
+	}
 	if (bHermitReacting)
 	{
 		const float OnBoards = HermitElapsed - HermitReactionSeconds - HermitRunSeconds;
@@ -116,13 +200,22 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 		if(FollowSpline(FVector(1400,-900,0)) && Checkpoint==1) ++TestStep;
 		break;
 	case 1:
-		// Exercise the lethal unprepared knock and the CP1 retry on the recovery run.
+	case 46:
+		// Interrupt the first knock at its first impact and replay the lethal encounter from CP1.
 		if(bRecoveryTest)
 		{
-			if(Move(FVector(2310,-75,0))){Interact(); if(bHermitReacting) ++TestStep;}
+			if (Move(FVector(2310,-75,0)))
+			{
+				Interact();
+				if (!IsKnocking()) { Fail(TEXT("empty-handed knock on covered boards")); return; }
+				TestStep = TestStep == 1 ? 45 : 2;
+			}
 		}
 		else ++TestStep;
 		break;
+	case 45:
+		Fail(TEXT("unprepared knock ended before the interrupt probe"));
+		return;
 	case 2:
 		if(bRecoveryTest)
 		{
@@ -147,13 +240,14 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 		if (!Inventory.Equipped.IsNone())
 		{
 			Interact();
-			if (bHermitReacting || bDoorOpen || Target(Pawn,false)!=ETarget::HandsFull)
+			if (IsKnocking() || bHermitReacting || bDoorOpen || Target(Pawn,false)!=ETarget::HandsFull)
 			{ Fail(TEXT("a held tool allowed a knock")); return; }
 			if (auto* PC=Cast<ANight_of_the_WolvesPlayerController>(Pawn.GetController())) PC->RequestTestEquip(NAME_None);
 			break;
 		}
 		Interact();
-		if(bHermitReacting) ++TestStep;
+		if (!IsKnocking()) { Fail(TEXT("empty-handed knock beside the open pit")); return; }
+		++TestStep;
 		break;
 	case 7: if(bHermitTrapped && Move(FVector(2010,0,0))) ++TestStep; break;
 	case 8:

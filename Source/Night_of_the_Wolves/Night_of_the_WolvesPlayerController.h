@@ -85,6 +85,7 @@ protected:
 
 	/** Gameplay initialization */
 	virtual void BeginPlay() override;
+	virtual void UpdateHiddenComponents(const FVector& ViewLocation, TSet<FPrimitiveComponentId>& HiddenComponents) override;
 
 	/** Input mapping context setup */
 	virtual void SetupInputComponent() override;

@@ -5,6 +5,7 @@
 #include "WolfTrailGameMode.h"
 #include "FirstLegCrossingLayout.h"
 #include "StormfallLayout.h"
+#include "HighWaterLayout.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimInstance.h"
 #include "Components/StaticMeshComponent.h"
@@ -187,8 +188,11 @@ void AFirstLegCrossing::Stamp(UStaticMesh* Mesh, UMaterialInterface* Material, F
 	const bool bTree=Mesh==Fir || Mesh==Pine || Mesh==Snag;
 	const bool bAtBluff = Rock.X > -710 && Rock.X < 1070 && Rock.Y > -1460 && Rock.Y < 1660;
 	const bool bStrikeWindow = P.X>16440 && P.X<18610 && P.Y>296 && P.Y<1830;
-	if ((bTree && bStrikeWindow) || (bAtBluff && (bTree || Mesh==Fern || Mesh==Round ||
-		Mesh==StreamStoneA || Mesh==StreamStoneB || Mesh==StreamStoneC || Mesh==NurseLog))) return;
+	const bool bRockOrVegetation = bTree || Mesh==Fern || Mesh==Round || Mesh==StreamStoneA ||
+		Mesh==StreamStoneB || Mesh==StreamStoneC || Mesh==NurseLog;
+	const FTransform Placement(R,P,S);
+	if ((bTree && bStrikeWindow) || (bRockOrVegetation && (bAtBluff ||
+		HighWaterLayout::IntersectsSurveyCut(Mesh->GetBoundingBox().TransformBy(Placement))))) return;
 	FBatch* Batch=Batches.FindByPredicate([=](const FBatch& B){return B.Mesh==Mesh && B.Material==Material && B.Solid==bSolid && B.Visible==bVisible && B.SurfaceTag==SurfaceTag;});
 	if (!Batch)
 	{
@@ -217,7 +221,7 @@ void AFirstLegCrossing::Stamp(UStaticMesh* Mesh, UMaterialInterface* Material, F
 		Instances->RegisterComponent();
 		Batch=&Batches.Add_GetRef({Mesh,Material,bSolid,bVisible,SurfaceTag,Instances});
 	}
-	Batch->Instances->AddInstance(FTransform(R,P,S));
+	Batch->Instances->AddInstance(Placement);
 }
 
 void AFirstLegCrossing::LogBeam(FVector A,FVector B,float Radius,UMaterialInterface* Material,bool bSolid)

@@ -14,10 +14,12 @@ class UAnimInstance;
 class UGroomBindingAsset;
 class UGroomComponent;
 class USkeletalMesh;
+class UPoseableMeshComponent;
 class USkinnedMeshComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 struct FInputActionValue;
+enum class EVisibilityBasedAnimTickOption : uint8;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -99,6 +101,7 @@ public:
 
 	/** Constructor */
 	ANight_of_the_WolvesCharacter();	
+	virtual void CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult) override;
 
 protected:
 
@@ -124,8 +127,22 @@ public:
 	void BeginDigAppearance(USkinnedMeshComponent* WorkingBody);
 	void FollowDigHead(const FTransform& Head);
 	void EndDigAppearance();
+	UPoseableMeshComponent* BeginWorkingPose();
+	void EndWorkingPose(UPoseableMeshComponent* Pose);
+
+	/** Contact is a point on the outside face of the closed door, in world space. */
+	void PoseDoorKnock(const FVector& Contact, const FVector& OutwardNormal, float Fraction);
+	void EndDoorKnock();
+	const UPoseableMeshComponent* GetKnockBody() const { return KnockBody; }
+	FVector KnockingKnuckle() const;
 
 private:
+	UPROPERTY(Transient)
+	TObjectPtr<UPoseableMeshComponent> KnockBody;
+	TArray<FTransform> KnockStance;
+	bool bKnockLeft = false;
+	bool bWorkingBodyWasVisible = true;
+	EVisibilityBasedAnimTickOption WorkingBodyTick;
 	FTransform RestFaceRelative;
 	FTransform FaceFromHead;
 public:

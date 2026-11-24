@@ -31,5 +31,6 @@ The evidence for each increment is in [PLAYTEST.md](PLAYTEST.md).
 | Increment | Playable outcome |
 | --- | --- |
 | Storm and cave | A lightning strike fells a burning fir across the road. The five wolves retreat down the trail and stay away. Max relights the spent firebrand, finds roots in a dark side cleft and burns a way through to the inner-chamber checkpoint. |
+| The High-Water Mark | Mount the firebrand, drain the survey chamber, free and guide its float, and let the returning spring lift the ladder and flame to the upper passage. CP7 records the recovered torch. |
 | Dead-of-night lighting | Full moon and cool ambient sky outdoors. The warm hearth, struck fir and handheld firebrand provide local light where the puzzles take place. |
 | Presentation and pursuit | A four-wolf opening reveals the fifth wolf as the alpha. Foreboding bowed strings begin at player handoff. The river has a voiced drowning performance and the wolf death card has a synchronized snarl. |

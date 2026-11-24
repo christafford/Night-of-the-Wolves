@@ -68,7 +68,8 @@ void UWolfHeldItem::TickComponent(float Dt,ELevelTick T,FActorComponentTickFunct
 	if (!Mode || !Held) return;
 	const auto& Bag = Mode->Inventory;
 	const bool Lit = Bag.bBurning && Bag.Equipped == TEXT("Firebrand");
-	if (bWasBurning && !Lit) SnuffRemaining = .42f;
+	if (!Bag.Has(TEXT("Firebrand"))) SnuffRemaining = 0.f;
+	else if (bWasBurning && !Lit) SnuffRemaining = .42f;
 	bWasBurning = Lit;
 	SnuffRemaining = FMath::Max(0.f, SnuffRemaining-Dt);
 	const FName Item = SnuffRemaining > 0 ? FName(TEXT("Firebrand")) : Bag.Equipped;

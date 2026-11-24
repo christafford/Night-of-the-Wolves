@@ -82,7 +82,10 @@ AStormfallSet::AStormfallSet()
 		Voice->SetSound(Load<USoundWave>(*FString::Printf(TEXT("/Game/NightOfTheWolves/Stormfall/%s"),Name)));
 		return Voice;
 	};
-	Mesh(TEXT("RivenBasaltBluff"),Load<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Stormfall/SM_RivenBluff")),FVector::ZeroVector);
+	auto* Bluff=Mesh(TEXT("RivenBasaltBluff"),Load<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Stormfall/SM_RivenBluff")),FVector::ZeroVector);
+	Bluff->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Bluff->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Bluff->SetCollisionResponseToChannel(ECC_Camera,ECR_Block);
 	BuildFractureFaces();
 	// The sloping dirt fans meet the logging tread without an edge for the capsule to catch.
 	auto Floor=[&](FName Name,FVector A,FVector B,float HalfWidth)
@@ -99,12 +102,12 @@ AStormfallSet::AStormfallSet()
 	Block(TEXT("LeftBeddingPlane"),{387,-265,158},{461,36,177});
 	Block(TEXT("RightBeddingPlane"),{146,263,155},{199,30,175});
 	Block(TEXT("RightBlindCorner"),{753,225,155},{95,34,169});
-	Block(TEXT("RockfallAcrossMainBore"),{795,-3,139},{70,243,155});
+	// The loose talus projects into the main bore in front of the sheer end wall.
+	Block(TEXT("RockfallAcrossMainBore"),{760,-3,139},{105,243,155});
 	Block(TEXT("UndersideOfOverhang"),{401,0,371},{490,288,43});
 	Block(TEXT("SideCleftLeftWall"),{331,575,145},{25,343,157});
 	Block(TEXT("SideCleftRightWall"),{691,576,146},{34,347,163});
 	Block(TEXT("SideCleftRoof"),{505,565,304},{181,358,40});
-	Block(TEXT("BeyondFirstChamber"),{540,944,141},{191,32,175});
 
 	RootBlock=Block(TEXT("MattedRootCollision"),{499,232,137},{166,17,134});
 	for (int32 I=0; I<5; ++I)
@@ -185,19 +188,27 @@ void AStormfallSet::BuildFractureFaces()
 		auto* Pieces=CreateDefaultSubobject<UInstancedStaticMeshComponent>(Name);
 		Pieces->SetupAttachment(RootComponent);
 		Pieces->SetStaticMesh(Load<UStaticMesh>(*FString::Printf(TEXT("/Game/NightOfTheWolves/Cascades/%s/StaticMeshes/%s"),Name,Name)));
-		Pieces->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Pieces->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Pieces->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Pieces->SetCollisionResponseToChannel(ECC_Camera,ECR_Block);
 		Pieces->SetGenerateOverlapEvents(false);
 		Pieces->SetCanEverAffectNavigation(false);
 		Beds.Add(Pieces);
 	}
-	auto Slab=[&](const FVector& Center, const FVector& Dimensions, float Yaw)
+	auto Slab=[&](const FVector& Center, const FVector& Dimensions, float Yaw, FVector Outward, double WallFace)
 	{
 		auto* Bed=Beds[Random.RandRange(0,Beds.Num()-1)];
 		if (!Bed->GetStaticMesh()) return;
 		const FBox Bounds=Bed->GetStaticMesh()->GetBoundingBox();
 		const FVector Scale=Dimensions/Bounds.GetSize().ComponentMax(FVector(1));
 		const FQuat Rotation=FRotator(Random.FRandRange(-17.f,17.f),Yaw+Random.FRandRange(-14.f,14.f),Random.FRandRange(-14.f,14.f)).Quaternion();
-		Bed->AddInstance(FTransform(Rotation,Center-Rotation.RotateVector(Scale*Bounds.GetCenter()),Scale));
+		FTransform Placement(Rotation,Center-Rotation.RotateVector(Scale*Bounds.GetCenter()),Scale);
+		// Even tilted blocks can only jut 14 cm past the walking wall. A
+		// shoulder resting on the wall still has room for the camera lens.
+		const FVector Extent = Bounds.TransformBy(Placement).GetExtent();
+		const double InnerLip = FVector::DotProduct(Center,Outward) - FVector::DotProduct(Extent,Outward.GetAbs());
+		Placement.AddToTranslation(Outward * FMath::Max(0.,WallFace - 14. - InnerLip));
+		Bed->AddInstance(Placement);
 	};
 	for (double Side : {-1.,1.})
 	{
@@ -208,7 +219,8 @@ void AStormfallSet::BuildFractureFaces()
 			for (int32 Lift=0; Lift<3; ++Lift)
 			{
 				const double Height=45.+Lift*87.+Random.FRandRange(-18.f,18.f);
-				Slab({X,Side*(248.-21.*Lift),Height},{Random.FRandRange(137,208),Random.FRandRange(64,111),Random.FRandRange(107,169)},6.f);
+				const double WallFace = Side < 0. ? 229. : (X > 673. ? 191. : 233.);
+				Slab({X,Side*(248.-21.*Lift),Height},{Random.FRandRange(137,208),Random.FRandRange(64,111),Random.FRandRange(107,169)},6.f,{0,Side,0},WallFace);
 			}
 		}
 		for (int32 Along=0; Along<9; ++Along)
@@ -218,7 +230,7 @@ void AStormfallSet::BuildFractureFaces()
 			for (int32 Lift=0; Lift<3; ++Lift)
 			{
 				const double Height=46.+Lift*85.+Random.FRandRange(-20.f,20.f);
-				Slab({Center+Side*(181.-Lift*14.),Y,Height},{Random.FRandRange(127,207),Random.FRandRange(60,104),Random.FRandRange(112,157)},88.f);
+				Slab({Center+Side*(181.-Lift*14.),Y,Height},{Random.FRandRange(127,207),Random.FRandRange(60,104),Random.FRandRange(112,157)},88.f,{Side,0,0},Side<0. ? -356. : 657.);
 			}
 		}
 	}

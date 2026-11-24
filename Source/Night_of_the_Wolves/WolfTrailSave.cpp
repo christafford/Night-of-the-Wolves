@@ -31,7 +31,7 @@ bool UWolfTrailSave::Enabled(AWolfTrailGameMode& Mode)
 
 bool UWolfTrailSave::IsUsable() const
 {
-	if ((Format!=1 && Format!=2) || Stage<1 || Stage>6 || !Spawn.IsValid() || Spawn.GetLocation().GetAbsMax()>1000000) return false;
+	if ((Format!=1 && Format!=2) || Stage<1 || Stage>7 || !Spawn.IsValid() || Spawn.GetLocation().GetAbsMax()>1000000) return false;
 	if ((!Equipment.IsNone() && !Bag.Contains(Equipment)) || (bLit && Equipment!=TEXT("Firebrand"))) return false;
 	TSet<FName> Unique;
 	for (FName Item : Bag)
@@ -39,6 +39,7 @@ bool UWolfTrailSave::IsUsable() const
 		if (Item.IsNone() || Unique.Contains(Item)) return false;
 		Unique.Add(Item);
 	}
+	if (Stage==7 && (Format<2 || !bLit || Equipment!=TEXT("Firebrand"))) return false;
 	if (Stage==3 && (!Bag.Contains(TEXT("Rope")) || !Bag.Contains(TEXT("Gold")))) return false;
 	if (Stage>=4 && Bag.Contains(TEXT("Rope"))) return false;
 	if (Stage==4 && !Bag.Contains(TEXT("Gold"))) return false;

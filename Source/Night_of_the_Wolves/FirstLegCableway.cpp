@@ -4,10 +4,9 @@
 #include "Components/PoseableMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 
-using namespace FirstLegCableway;
-
 void AFirstLegCrossing::BuildCableway()
 {
+	using namespace FirstLegCableway;
 	const FRotator Yaw = Axis.Rotation();
 	const FVector Head(NearStop.X, NearStop.Y, 0);
 	const FVector Tail(FarStop.X, FarStop.Y, 0);
@@ -91,6 +90,7 @@ void AFirstLegCrossing::BuildCableway()
 
 void AFirstLegCrossing::SetTrolleyPose(float FractionOnCable, float SlingFraction)
 {
+	using namespace FirstLegCableway;
 	const float T = FMath::Clamp(FractionOnCable, 0.f, 1.f);
 	const float Rigged = FMath::Clamp(SlingFraction, 0.f, 1.f);
 	const FVector Contact = WireContact(T);
@@ -110,6 +110,7 @@ void AFirstLegCrossing::SetTrolleyPose(float FractionOnCable, float SlingFractio
 
 void AFirstLegCrossing::ShowRopeCast(float Progress)
 {
+	using namespace FirstLegCableway;
 	// The lower end pays out of Max's left hand as his right throws an open
 	// bight. It clears the upturned horn, drops onto its saddle and pulls taut.
 	const FVector Right = HangingPose->GetSocketLocation(TEXT("hand_r"));

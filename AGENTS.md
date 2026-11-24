@@ -40,11 +40,26 @@ mkdir -p "$UE_OUTPUT"
 
 Set `UE_OUTPUT="$HOME/Builds/NightOfTheWolves-Linux"` to use the original external archive location. Current playtest instructions use `Saved/MoonlitTrail-Linux`.
 
-## Play the river, bandit and storm checkpoints
+## Play an earned checkpoint
 
-Run `./Scripts/play_checkpoint.sh river` for the broken bridge, `./Scripts/play_checkpoint.sh bandit` for the far bank or `./Scripts/play_checkpoint.sh storm` for the escape bend. They launch the archived Shipping game with a temporary copy of an earned checkpoint from `Tests/Fixtures`. A regular launch resumes the player’s own save.
+Run `./Scripts/play_checkpoint.sh river` for the broken bridge, `./Scripts/play_checkpoint.sh bandit` for the far bank, `./Scripts/play_checkpoint.sh storm` for the escape bend, or `./Scripts/play_checkpoint.sh cave` for the High-Water Mark chamber. They launch the archived Shipping game with a temporary copy of an earned checkpoint from `Tests/Fixtures`. A regular launch resumes the player’s own save.
 
 For an uninterrupted Development run from the trailhead through the cave, use `-FirstLegTest -FirstLegClean -IntoStorm`. The full first-leg recovery driver also throws the sack uphill, loses it, retries and throws into the approaching pack. To test the robbery in isolation, copy the CP4 fixture into a private save directory as described below and run `-ExecCmds="t.MaxFPS 0,Wolf.TestRobbery"`. It exercises waiting and sprinting on both the road and its shoulder. To exercise the cave in isolation, copy the bend fixture to `Saved/SaveGames/MoonlitTrail-v1.sav` inside a temporary user directory. Use `-SaveToUserDir -UserDir=<absolute temporary directory>` with `-ExecCmds="t.MaxFPS 0,Wolf.TestStormfall"`. Repeat against the resulting save with `-StormResume` to check cold CP6. Add `-StormPhotos` for rendered frames. `-StormRetry` retries during the pack’s reaction shot and `-StormLinger` waits in the clearing for over a game minute with an unlit brand.
+
+To verify the survey chamber in Development, put the CP6 fixture in a private profile and play the regression route. It includes an early refill, a fall into deep water, a forgotten torch, and a retry during the last refill. A second game process checks the resulting CP7 disk save.
+
+```sh
+WATER_TEST_PROFILE="$(mktemp -d)"
+mkdir -p "$WATER_TEST_PROFILE/Saved/SaveGames"
+cp Tests/Fixtures/MoonlitTrail-CP6-v1.sav "$WATER_TEST_PROFILE/Saved/SaveGames/MoonlitTrail-v1.sav"
+for check in -WatermarkRetry -WatermarkResume; do
+  "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$UE_PROJECT" /Game/NightOfTheWolves/Maps/M1_Trail \
+    -game -nullrhi -nosound -unattended -nop4 -UseFixedTimeStep -FPS=60 -SaveToUserDir \
+    "-UserDir=$WATER_TEST_PROFILE" -ExecCmds='t.MaxFPS 0,Wolf.TestHighWater' "$check" || break
+done
+```
+
+For changes to the cave camera or rock meshes, launch the Development game with the CP6 test profile above and a Vulkan viewport. Use `-RenderOffscreen -windowed -ForceRes -ResX=840 -ResY=360 -UseFixedTimeStep -FPS=60 -ExecCmds='ShowFlag.Rendering 0,t.MaxFPS 0,r.VSync 0,Wolf.TestCaveCamera'`. Repeat at 512×384. The test checks the gameplay camera, the corners of the view, sight lines through the rock and the return to the outdoor camera. Review a visible orbit at the vestibule rockfall in Shipping as well.
 
 ## Verify a gameplay change
 

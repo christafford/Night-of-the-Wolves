@@ -5,7 +5,8 @@ case "${1:-}" in
     river) stage=3 ;;
     bandit) stage=4 ;;
     storm) stage=5 ;;
-    *) echo "Usage: $0 {river|bandit|storm} [Unreal launch options]" >&2; exit 2 ;;
+    cave) stage=6 ;;
+    *) echo "Usage: $0 {river|bandit|storm|cave} [Unreal launch options]" >&2; exit 2 ;;
 esac
 shift
 project_dir="$(cd -- "$(dirname -- "$0")/.." && pwd)"

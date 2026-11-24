@@ -1,5 +1,42 @@
 # Playtest record
 
+## Cave camera, November 23, 2026
+
+In the previous Linux Shipping build, standing near the vestibule rockfall at local feet (597, −45, 15) and looking up at pitch +32°, yaw 120° showed stars through a rectangular opening in the ceiling. Turning against the adjacent wall could also put the view inside Max’s coat.
+
+| Development camera check | Observed result |
+| --- | --- |
+| Orbit at 20 stations including the rockfall, root passage, ramp, pool, shelf edges, landing and upper gallery | Two Vulkan runs covered 3,240 camera views, using 4:3 and 21:9 viewports. All 29,160 near-plane samples cleared the rock. No sampled sightline escaped through a wall, floor or ceiling. |
+| Look back through the entrance and return to the forest | 47 samples at 4:3 and 57 at 21:9 saw out through the actual mouth. The outdoor camera recovered its original eye position, arm length and offsets. |
+| Play through the cave | The storm and roots route reached CP6. The High-Water Mark test completed the final refill, recovered the torch, earned CP7 and resumed from disk. |
+
+The orbit command in `AGENTS.md` uses the active gameplay camera and its actual viewport projection. It samples collision geometry with scene drawing disabled. A separate one-sided check on the authored rock faces found zero unintended escapes across 98,304 rays while preserving 1,359 views through the mouth.
+
+The Linux Shipping build compiled, cooked and archived to `Saved/MoonlitTrail-Linux` with UAT exit 0. The archive contains both revised rock meshes. At the same standing position and mouse angle in the packaged game, the former strip of sky above the rockfall shows continuous torchlit stone. [Before and after, from Max’s camera](../Saved/CaveCameraReview/Rockfall-Comparison.jpg)
+
+Five launches of the final archive used private profiles and keyboard and mouse input at 1280×800. The 336 rendered orbit views covered ten positions from the blind rockfall through the torch fork and the upper gallery. The chamber stayed enclosed, the camera cleared Max’s coat at the blind end, and the burning tree and forest were still visible when looking back through the mouth. All five runs exited normally.
+
+## The High-Water Mark and the cabin knock, November 23, 2026
+
+Use `./Scripts/play_checkpoint.sh cave` from the project root to enter the chamber with the firebrand from an earned CP6 save. It uses a temporary profile. The route below contains puzzle spoilers.
+
+| Development acceptance case | Observed result |
+| --- | --- |
+| Try the trough with the lit brand in hand, then step off the shelf into deep water | The spring kept filling the pool. Max swam back to dry footing with his torch still lit. An early CP7 request was refused. |
+| Hang the brand, drain the pool, roll the timber, and refill before guiding the float | The first fork held the flame and freed Max’s hands. The stone steps emerged. The freed float rose at the wrong wall. A second drain allowed Max to reach it and push it into the guides. |
+| Leave the fire on the lower wall and climb the guided ladder | Max could walk to the upper passage, but stayed at CP6. He climbed back down to recover his torch. |
+| Transfer the brand to the ladder, refill and retry during the rise | The camera followed the live flame. Retry restored the original lit brand to Max, the pinned float to the full pool, and the camera and movement controls to the player. |
+| Repeat the last refill, climb and take the firebrand at the top | The upper passage saved CP7. A fresh Development process restored Max on the upper floor with the lit brand equipped. |
+| Knock at the cabin on intact planks and after digging | Both branches produced three wood impacts. The animated knuckle came within 1.2 cm of the timber each time and drew back 17.4 cm between strikes. The shovel blocked knocking. Retrying during the first rap cleared the pose and restored CP1. The hermit shot Max on intact boards and fell into the prepared hollow on the replay. |
+
+The Development route used character movement, collision, and simulated interaction-key presses from the CP6 fixture. The clean first-leg driver also went from the trailhead through the burning roots to CP6. The separate guarded-door and cottage recovery runs passed.
+
+In the Linux Shipping game, keyboard and mouse input took Max from the inner cave through the final refill to CP7 in 102 seconds. The raised torch revealed the high passage. On a cold launch of the same profile, Max stood on the upper floor holding the lit torch and could walk forward. [Watch the refill with game audio](../Saved/HighWaterReview/Final-refill.mp4) · [See the cold CP7 spawn](../Saved/HighWaterReview/CP7-upper-passage.png)
+
+A separate packaged run approached the cabin with empty hands. Max stepped into reach and knocked before the hermit opened the door. A second Shipping run picked up and equipped the shovel, dug, selected bare hands and knocked from the right rim. Max used his left hand at that jamb. The stereo recordings contain three raps on each approach. [Watch the cabin knock](../Saved/KnockReview/Cabin-knock.mp4)
+
+The final Development camera checks swept a 12 cm probe along the third-person sightline in the entrance and upper gallery. Both paths cleared the rock. The final archived game also showed Max, his torch, the pool and trough together at the old entrance clipping point. Reopening CP7 again showed his feet on the gallery floor and accepted forward movement. The Linux Shipping build compiled, cooked, staged and archived under `Saved/MoonlitTrail-Linux`. UAT exited 0. The archived executable matched the final linked binary and all 95 checked content packages were present, including the 14 chamber assets.
+
 ## The robbery and “No Birds at This Hour”, November 23, 2026
 
 The Development check `Wolf.TestRobbery` started with an earned far-bank save. It threw with the sack equipped, used the gameplay sprint input, and tracked Max's movement, the pouch landing, the wolf strike and the saved checkpoint.

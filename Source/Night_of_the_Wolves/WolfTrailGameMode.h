@@ -5,8 +5,10 @@
 #include "WolfInventory.h"
 #include "WolfTrailGameMode.generated.h"
 
+class ANight_of_the_WolvesCharacter;
 class AFirstLegCrossing;
 class AStormfallSet;
+class AHighWaterChamber;
 class ARiverDrowningShot;
 class UWolfPackComponent;
 class AWolfCottageSet;
@@ -47,6 +49,8 @@ public:
 	float FireDeterrenceSeconds = 36.f;
 	UPROPERTY(EditDefaultsOnly, Category="Cottage", meta=(ClampMin="0.1"))
 	float DigSeconds = 3.2f;
+	UPROPERTY(EditDefaultsOnly, Category="Cottage", meta=(ClampMin="0.6", Units="s"))
+	float KnockSeconds = 1.42f;
 	UPROPERTY(EditDefaultsOnly, Category="Cottage", meta=(ClampMin="0.1"))
 	float HermitReactionSeconds = 1.2f;
 	UPROPERTY(EditDefaultsOnly, Category="Cottage", meta=(ClampMin="0.1"))
@@ -94,6 +98,7 @@ public:
 	bool IsDead() const { return !DeathCause.IsEmpty(); }
 	bool IsWolfPouncing() const { return bWolfPouncing; }
 	bool IsTraversalLocked() const;
+	bool IsKnocking() const { return KnockElapsed >= 0.f; }
 	bool IsWatchingCreekPack() const;
 	bool IsOnCabinFloor(const FVector& P) const { return IsInside(P); }
 	float DiggingTime() const { return DigElapsed; }
@@ -127,12 +132,15 @@ private:
 	UPROPERTY() TObjectPtr<ACottageHermit> Hermit;
 	UPROPERTY() TObjectPtr<AFirstLegCrossing> Crossing;
 	UPROPERTY() TObjectPtr<AStormfallSet> Storm;
+	friend class AHighWaterChamber;
+	UPROPERTY() TObjectPtr<AHighWaterChamber> SurveyChamber;
 	friend class ARiverDrowningShot;
 	UPROPERTY(Transient) TObjectPtr<ARiverDrowningShot> RiverShot;
 	bool bRiverDrowning = false;
 	UPROPERTY(EditDefaultsOnly, Category="Stormfall", meta=(ClampMin="0.5",Units="s")) float RootBurnSeconds = 2.4f;
 	float StrikeTime = -1.f;
 	float BendTime = 0.f;
+	float ForestLeak = -1.f;
 	float RootBurnTime = -1.f;
 	bool bTreeFlame = false;
 	bool bInsideCave = false;
@@ -165,6 +173,16 @@ private:
 	float DigElapsed = -1;
 	FVector DigStanceStart, DigStanceEnd;
 	FRotator DigStartFacing, DigFacing;
+	void BeginKnock(ANight_of_the_WolvesCharacter& Max);
+	void UpdateKnock(ANight_of_the_WolvesCharacter& Max, float Dt);
+	void EndKnock();
+	float KnockElapsed = -1.f;
+	float KnockApproach = 0.f;
+	int32 KnockHits = 0;
+	bool bKnockPlanted = false;
+	bool bKnockJumpAllowed = true;
+	FVector KnockContact, KnockStance;
+	FRotator KnockFacing;
 	float HermitElapsed = -1;
 	bool bHermitFired = false;
 	bool bHermitShouted = false;

@@ -11,7 +11,7 @@ namespace
 constexpr double CellSize = 104.;
 constexpr double GroundSampleSpacing = 48.;
 constexpr double MaxQueryDistance = 4500.;
-constexpr double Radius = 25.;
+constexpr double WolfCapsuleRadius = 25.;
 constexpr double HalfHeight = 33.;
 constexpr double BodyCenter = 51.;
 constexpr double MaxStep = 38.;
@@ -31,7 +31,7 @@ const FCollisionResponseParams& SolidSurfaces()
 
 const FCollisionShape& WolfBody()
 {
-	static const FCollisionShape Shape = FCollisionShape::MakeCapsule(Radius, HalfHeight);
+	static const FCollisionShape Shape = FCollisionShape::MakeCapsule(WolfCapsuleRadius, HalfHeight);
 	return Shape;
 }
 
@@ -276,7 +276,7 @@ bool FWolfPackNavigation::Alternate(FQuery& Q, const FVector& From, const FVecto
 			const FVector Peak = FMath::Lerp(EdgeStart, P, T);
 			const double Station = FVector::DotProduct(Peak - From, Direction);
 			const double Lateral = FVector::DotProduct(Peak - From, Across);
-			if (Station < Distance * .06 || Station > Distance * .94 || FMath::Abs(Lateral) < Radius * 1.8) continue;
+			if (Station < Distance * .06 || Station > Distance * .94 || FMath::Abs(Lateral) < WolfCapsuleRadius * 1.8) continue;
 			bHasDetour = true;
 			FVector Median = From + Direction * Station;
 			Median.Z = Peak.Z;
@@ -286,7 +286,7 @@ bool FWolfPackNavigation::Alternate(FQuery& Q, const FVector& From, const FVecto
 				if (!Ground(Q, Median - Across * FMath::Sign(Lateral) * Width, Branch, true) ||
 					Segment(Q, Peak, Branch, Crossing)) continue;
 				FWolfNavigationPath First, Second;
-				const double KeepAway = FMath::Max(Radius * 2., FMath::Abs(Lateral) * .75);
+				const double KeepAway = FMath::Max(WolfCapsuleRadius * 2., FMath::Abs(Lateral) * .75);
 				if (!Plan(Q, From, Branch, First, &Peak, KeepAway) || !Plan(Q, Branch, To, Second, &Peak, KeepAway)) continue;
 				if (First.Length + Second.Length > Primary.Length * 1.8f) continue;
 				Out = MoveTemp(First);

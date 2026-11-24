@@ -1,8 +1,10 @@
 #include "WolfTrailGameMode.h"
 #include "StormfallLayout.h"
+#include "HighWaterChamber.h"
 #include "StormfallSet.h"
 #include "WolfPackComponent.h"
 #include "GameFramework/Pawn.h"
+#include "Components/AudioComponent.h"
 
 namespace
 {
@@ -35,6 +37,7 @@ void AWolfTrailGameMode::ResetStormfall(int32 Id)
 	const bool bCleared = Id >= 6;
 	StrikeTime = bCleared ? StormfallLayout::Settled : -1.f;
 	BendTime = 0.f;
+	ForestLeak = -1.f;
 	RootBurnTime = bCleared ? RootBurnSeconds : -1.f;
 	bTreeFlame = bInsideCave = bThroughRoots = bCleared;
 	Storm->Restore(bCleared,bCleared);
@@ -44,7 +47,7 @@ void AWolfTrailGameMode::StormAction(APawn& Max, bool bUseItem)
 {
 	using namespace StormfallLayout;
 	const FVector Feet = FeetOf(Max);
-	if (StrikeTime >= GroundImpact && ByBurningWood(Feet))
+	if (StrikeTime >= GroundImpact && !SurveyChamber->HasMountedTorch() && ByBurningWood(Feet))
 	{
 		// The original torch normally comes from the cabin. A save from an
 		// earlier build can legitimately lack it; there is wood here to take.
@@ -106,6 +109,18 @@ void AWolfTrailGameMode::UpdateStormfall(float Dt, APawn& Max)
 	}
 
 	const FVector Local=LocalPoint(Feet);
+	// The outdoor loops are 2D. Let the rock muffle them so a knock from
+	// the pool carries, and bring them back if Max retraces his steps.
+	if (Checkpoint >= 6)
+	{
+		const float Leak = 1.f - .96f*FMath::SmoothStep(480.f,1450.f,float(Local.Y));
+		if (!FMath::IsNearlyEqual(Leak,ForestLeak,.01f))
+		{
+			if (HowlLoop) HowlLoop->SetVolumeMultiplier(WolfHowlVolume*Leak);
+			if (WindLoop) WindLoop->SetVolumeMultiplier(ForestWindVolume*Leak);
+			ForestLeak=Leak;
+		}
+	}
 	const bool bFloorHeight=Local.Z>-65. && Local.Z<95.;
 	if (bFloorHeight && Local.X>-28. && Local.X<160. && FMath::Abs(Local.Y)<155.)
 		bInsideCave=true;
@@ -118,7 +133,7 @@ void AWolfTrailGameMode::UpdateStormfall(float Dt, APawn& Max)
 			Say(TEXT("Cool air moves up from below."),4.f);
 	}
 
-	if (StrikeTime>=GroundImpact && ByBurningWood(Feet))
+	if (StrikeTime>=GroundImpact && !SurveyChamber->HasMountedTorch() && ByBurningWood(Feet))
 	{
 		if (!Inventory.Has(TEXT("Firebrand"))) InteractionPrompt=TEXT("E  Take burning branch");
 		else if (Inventory.Equipped==TEXT("Firebrand") && !HasTreeFlame()) InteractionPrompt=TEXT("F  Light firebrand");

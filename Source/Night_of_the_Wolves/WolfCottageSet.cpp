@@ -219,8 +219,8 @@ void AWolfCottageSet::SwingDoor(float Fraction)
 	const FRotator Swing(0,-90.f * FMath::SmoothStep(0.f,1.f,Fraction),0);
 	for (AActor* Panel : DoorActors)
 	{
-		const FVector Hinge(2450,-90,Panel->GetActorLocation().Z);
-		Panel->SetActorLocationAndRotation(Hinge + Swing.RotateVector(FVector(0,90,0)),Swing);
+		const FVector DoorHinge(2450,-90,Panel->GetActorLocation().Z);
+		Panel->SetActorLocationAndRotation(DoorHinge + Swing.RotateVector(FVector(0,90,0)),Swing);
 	}
 }
 void AWolfCottageSet::RestoreProps(bool bCaughtBefore)

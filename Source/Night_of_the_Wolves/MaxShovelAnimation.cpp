@@ -42,16 +42,16 @@ FSpadeKey SampleStroke(float Phase)
 		FMath::Lerp(A.HipDrop,B.HipDrop,Alpha), FMath::Lerp(A.Lean,B.Lean,Alpha), FMath::Lerp(A.Twist,B.Twist,Alpha)};
 }
 
-constexpr auto World = EBoneSpaces::WorldSpace;
+constexpr auto DigWorldSpace = EBoneSpaces::WorldSpace;
 
 void PositionLimb(UPoseableMeshComponent& Body, FName Upper, FName Lower, FName End, const FVector& Goal, const FVector& Pole, float Weight)
 {
-	FTransform A=Body.GetBoneTransformByName(Upper,World);
-	FTransform B=Body.GetBoneTransformByName(Lower,World);
-	FTransform C=Body.GetBoneTransformByName(End,World);
+	FTransform A=Body.GetBoneTransformByName(Upper,DigWorldSpace);
+	FTransform B=Body.GetBoneTransformByName(Lower,DigWorldSpace);
+	FTransform C=Body.GetBoneTransformByName(End,DigWorldSpace);
 	AnimationCore::SolveTwoBoneIK(A,B,C,Pole,FMath::Lerp(C.GetLocation(),Goal,double(Weight)),false,1.,1.);
-	Body.SetBoneRotationByName(Upper,A.Rotator(),World);
-	Body.SetBoneRotationByName(Lower,B.Rotator(),World);
+	Body.SetBoneRotationByName(Upper,A.Rotator(),DigWorldSpace);
+	Body.SetBoneRotationByName(Lower,B.Rotator(),DigWorldSpace);
 }
 }
 
@@ -107,14 +107,14 @@ void UWolfHeldItem::UpdateSpadePose(ANight_of_the_WolvesCharacter& Max, float Fr
 	Held->SetWorldTransform(Tool);
 
 	// Keep the soles planted as the pelvis lowers and the chest turns over the tool.
-	const FVector LeftBoot = DigBody->GetBoneLocationByName(TEXT("foot_l"), World);
-	const FVector RightBoot = DigBody->GetBoneLocationByName(TEXT("foot_r"), World);
-	const FVector Hips = DigBody->GetBoneLocationByName(TEXT("pelvis"), World);
-	DigBody->SetBoneLocationByName(TEXT("pelvis"),Hips + Weight*(Forward*(Key.HipDrop*.17f)-Up*Key.HipDrop),World);
-	const FQuat Spine = DigBody->GetBoneTransformByName(TEXT("spine_01"), World).GetRotation();
+	const FVector LeftBoot = DigBody->GetBoneLocationByName(TEXT("foot_l"), DigWorldSpace);
+	const FVector RightBoot = DigBody->GetBoneLocationByName(TEXT("foot_r"), DigWorldSpace);
+	const FVector Hips = DigBody->GetBoneLocationByName(TEXT("pelvis"), DigWorldSpace);
+	DigBody->SetBoneLocationByName(TEXT("pelvis"),Hips + Weight*(Forward*(Key.HipDrop*.17f)-Up*Key.HipDrop),DigWorldSpace);
+	const FQuat Spine = DigBody->GetBoneTransformByName(TEXT("spine_01"), DigWorldSpace).GetRotation();
 	const FQuat Bend(Side,FMath::DegreesToRadians(Key.Lean*Weight));
 	const FQuat Twist(Up,FMath::DegreesToRadians(Key.Twist*Weight));
-	DigBody->SetBoneRotationByName(TEXT("spine_01"),(Twist*Bend*Spine).Rotator(),World);
+	DigBody->SetBoneRotationByName(TEXT("spine_01"),(Twist*Bend*Spine).Rotator(),DigWorldSpace);
 
 	for (bool bLeft : {true,false})
 	{
@@ -127,11 +127,11 @@ void UWolfHeldItem::UpdateSpadePose(ANight_of_the_WolvesCharacter& Max, float Fr
 		const FVector Wrist = Palm + Side*Sign*6. - Forward*2.7;
 		PositionLimb(*DigBody,bLeft ? TEXT("upperarm_l") : TEXT("upperarm_r"),bLeft ? TEXT("lowerarm_l") : TEXT("lowerarm_r"),
 			Hand,Wrist,Feet + Side*Sign*57.f - Forward*16.f + Up*105.f,Weight);
-		const FTransform PalmBone = DigBody->GetBoneTransformByName(Hand,World);
-		const FVector Knuckle = DigBody->GetBoneLocationByName(bLeft ? TEXT("middle_01_l") : TEXT("middle_01_r"),World);
+		const FTransform PalmBone = DigBody->GetBoneTransformByName(Hand,DigWorldSpace);
+		const FVector Knuckle = DigBody->GetBoneLocationByName(bLeft ? TEXT("middle_01_l") : TEXT("middle_01_r"),DigWorldSpace);
 		const FVector AlongPalm = (Knuckle-PalmBone.GetLocation()).GetSafeNormal();
 		const FQuat Close = FQuat::FindBetweenNormals(AlongPalm,(Palm-Wrist).GetSafeNormal());
-		DigBody->SetBoneRotationByName(Hand,(FQuat::Slerp(FQuat::Identity,Close,Weight)*PalmBone.GetRotation()).Rotator(),World);
+		DigBody->SetBoneRotationByName(Hand,(FQuat::Slerp(FQuat::Identity,Close,Weight)*PalmBone.GetRotation()).Rotator(),DigWorldSpace);
 	}
 	DigBody->RefreshBoneTransforms();
 	Max.FollowDigHead(DigBody->GetSocketTransform(TEXT("head")));
