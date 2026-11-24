@@ -21,6 +21,7 @@ private:
 	UPROPERTY() FName Equipment;
 	UPROPERTY() bool bLit = false;
 	UPROPERTY() FTransform Spawn;
+	UPROPERTY() FVector PouchSite = FVector::ZeroVector;
 	bool IsUsable() const;
 	static bool Enabled(AWolfTrailGameMode& Mode);
 };

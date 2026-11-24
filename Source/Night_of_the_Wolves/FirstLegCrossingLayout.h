@@ -7,7 +7,6 @@ namespace FirstLegLayout
 	inline const FVector CreekApproach(9400, -1200, 144);
 	inline const FVector Takeoff(9740, -1190, 144);
 	inline const FVector Landing(11150, -700, 144);
-	inline const FVector Anchor(10445, -945, 1595);
 	inline const FVector BanditMark(14550, 135, 50);
 	// Fixed clearing behind the demand line, on the approach side of the bend.
 	inline const FVector GoldPatch(13400, -790, 57);

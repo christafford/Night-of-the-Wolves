@@ -1,7 +1,9 @@
 #include "WolfCottageSet.h"
+#include "MaxDigStroke.h"
 #include "WolfPackComponent.h"
+#include "WolfMeshComponent.h"
+#include "WolfTrailGameMode.h"
 #include "WolfTrailRoute.h"
-#include "Components/InstancedStaticMeshComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SplineComponent.h"
@@ -16,16 +18,20 @@
 AWolfCottageSet::AWolfCottageSet()
 {
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Cottage")));
+	CreateYardProps();
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> BoxAsset(TEXT("/Engine/BasicShapes/Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> BallAsset(TEXT("/Engine/BasicShapes/Sphere"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> TubeAsset(TEXT("/Engine/BasicShapes/Cylinder"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Coil(TEXT("/Game/NightOfTheWolves/FirstLeg/Rope"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Pouch(TEXT("/Game/NightOfTheWolves/FirstLeg/Gold"));
+	RopeMesh = Coil.Object;
+	PouchMesh = Pouch.Object;
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Shape(TEXT("/Engine/BasicShapes/BasicShapeMaterial"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Wood(TEXT("/Game/NightOfTheWolves/Presentation/M_TreeBark"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Mud(TEXT("/Game/NightOfTheWolves/Presentation/M_ForestGround"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Ember(TEXT("/Game/NightOfTheWolves/Presentation/M_FireGlow"));
 	Cube=BoxAsset.Object; Ball=BallAsset.Object; Tube=TubeAsset.Object; ShapeMaterial=Shape.Object;
 	Bark=Wood.Object; Soil=Mud.Object; Fire=Ember.Object;
-	Pack = CreateDefaultSubobject<UWolfPackComponent>(TEXT("HuntingPack"));
 	static ConstructorHelpers::FObjectFinder<USoundBase> Impact(TEXT("/Game/NightOfTheWolves/FirstLeg/DoorImpact"));
 	static ConstructorHelpers::FObjectFinder<USoundBase> Growl(TEXT("/Game/NightOfTheWolves/FirstLeg/Growl"));
 	static ConstructorHelpers::FObjectFinder<USoundBase> Hearth(TEXT("/Game/NightOfTheWolves/FirstLeg/Hearth"));
@@ -37,6 +43,7 @@ AWolfCottageSet::AWolfCottageSet()
 void AWolfCottageSet::BeginPlay()
 {
 	Super::BeginPlay();
+	Pack = CastChecked<AWolfTrailGameMode>(GetWorld()->GetAuthGameMode())->GetHuntingPack();
 	Nearby=NewObject<USoundAttenuation>(this);
 	Nearby->Attenuation.AttenuationShapeExtents=FVector(380,0,0);
 	Nearby->Attenuation.FalloffDistance=1550;
@@ -52,7 +59,15 @@ void AWolfCottageSet::BeginPlay()
 	ActorsWith(TEXT("M2Door"),DoorActors); ActorsWith(TEXT("M3PitCover"),PitCover);
 	for (const AActor* Cover : PitCover)
 		PitBounds += Cover->GetComponentsBoundingBox(true);
-	ActorsWith(TEXT("M3Shovel"),Shovel); ActorsWith(TEXT("M2Hermit"),OldHermit);
+	// Legacy maps used two primitive actors to represent the pickup.
+	TArray<AActor*> BlockoutShovels;
+	UGameplayStatics::GetAllActorsWithTag(this, TEXT("M3Shovel"), BlockoutShovels);
+	for (AActor* Actor : BlockoutShovels)
+	{
+		Actor->SetActorHiddenInGame(true);
+		Actor->SetActorEnableCollision(false);
+	}
+	ActorsWith(TEXT("M2Hermit"),OldHermit);
 	for (AActor* A:OldHermit) { A->SetActorHiddenInGame(true); A->SetActorEnableCollision(false); }
 	auto Dye=[this](FLinearColor Color)
 	{
@@ -61,7 +76,7 @@ void AWolfCottageSet::BeginPlay()
 		return M;
 	};
 	Gold=Dye(FLinearColor(.78,.43,.07)); Cloth=Dye(FLinearColor(.14,.17,.13));
-	Iron=Dye(FLinearColor(.085,.09,.10)); RopeMat=Dye(FLinearColor(.51,.34,.16));
+	Iron=Dye(FLinearColor(.085,.09,.10));
 	BuildProps();
 	BuildRoof();
 }
@@ -95,19 +110,14 @@ void AWolfCottageSet::BuildProps()
 	Piece(Cube,Bark,FVector(2800,-235,77),FVector(1.6,.85,.12));
 	for (int X : {-60,60}) for (int Y : {-28,28})
 		Piece(Cube,Bark,FVector(2800+X,-235+Y,37),FVector(.10,.11,.74));
-	// Stacked polygonal loops keep the open coil recognizable from above.
-	for (int Ring=0;Ring<3;Ring++) for (int I=0;I<14;I++)
-	{
-		const float A=2*PI*I/14.f,B=2*PI*(I+1)/14.f;
-		const float Radius=23-Ring*3;
-		const FVector Center(2760,-225,86+Ring*2.5);
-		TableGoods.Add(Stick(Center+FVector(Radius*FMath::Cos(A),Radius*FMath::Sin(A),0),Center+FVector(Radius*FMath::Cos(B),Radius*FMath::Sin(B),0),4.2,RopeMat));
-	}
-	TableGoods.Add(Stick(FVector(2780,-223,89),FVector(2785,-191,74),4.2,RopeMat));
-	TableGoods.Add(Piece(Ball,Cloth,FVector(2835,-233,95),FVector(.42,.36,.27)));
-	TableGoods.Add(Piece(Tube,RopeMat,FVector(2835,-233,104),FVector(.20,.20,.055)));
-	for(int I=0;I<6;I++)
-		TableGoods.Add(Piece(Tube,Gold,FVector(2818+9*FMath::Cos(I*1.9),-214+15*FMath::Sin(I*1.9),86+I%2),FVector(.08,.08,.016)));
+	// Keep the same shapes that Max carries. The coil hangs on the back wall;
+	// the partly spilled purse sits within reach from the front of the worktable.
+	Stick(FVector(3208,-84,144), FVector(3166,-84,151), 5.5f, Bark);
+	RopeCoil = Piece(RopeMesh,nullptr,FVector(3188,-84,123),FVector(1.85),FRotator(0,90,0));
+	GoldSack = Piece(PouchMesh,nullptr,FVector(2800,-220,110),FVector(1.7));
+	for (int I=0; I<7; ++I)
+		Piece(Tube,Gold,FVector(12+I*1.6,4+5*FMath::Sin(2.4*I),-15.4+I%2*.4),
+			FVector(.030,.030,.005),FRotator::ZeroRotator,GoldSack);
 	// A soot-dark firebox, jambs and a deep lintel give the glowing wood a recess.
 	// Preserve the mouth of the hearth for the hand-held brand interaction.
 	Piece(Cube,Iron,FVector(3107,220,84),FVector(.10,1.5,1.1));
@@ -180,7 +190,6 @@ void AWolfCottageSet::BuildProps()
 	WindowWarning=Group(FVector(2511,222,171));
 	Piece(Ball,Cloth,FVector(0,0,1),FVector(.38,.38,.47),FRotator::ZeroRotator,WindowWarning);
 	Stick(FVector(-8,-30,-10),FVector(-9,17,11),5,Iron,WindowWarning);
-	Pack->SpawnMembers();
 }
 
 void AWolfCottageSet::SetPit(bool bDug)
@@ -193,8 +202,11 @@ void AWolfCottageSet::SetPit(bool bDug)
 		WeakPlanks[I]->SetRelativeRotation(FRotator(0,(I%3-1)*1.5f,0));
 	}
 }
-void AWolfCottageSet::SetShovel(bool bVisible){ for(AActor* A:Shovel) A->SetActorHiddenInGame(!bVisible); }
-void AWolfCottageSet::SetSupplies(bool bVisible){ for(auto& C:TableGoods) C->SetVisibility(bVisible); }
+void AWolfCottageSet::SetShovel(bool bVisible){ YardShovel->SetVisibility(bVisible); }
+void AWolfCottageSet::SetRope(bool bVisible) { RopeCoil->SetVisibility(bVisible); }
+void AWolfCottageSet::SetGold(bool bVisible) { GoldSack->SetVisibility(bVisible,true); }
+FVector AWolfCottageSet::GetRopeLocation() const { return RopeCoil->GetComponentLocation(); }
+FVector AWolfCottageSet::GetGoldLocation() const { return GoldSack->GetComponentLocation(); }
 void AWolfCottageSet::SetBrand(bool bVisible){ for(auto& C:Brand) C->SetVisibility(bVisible); }
 void AWolfCottageSet::Door(bool bOpen,bool bBarred)
 {
@@ -214,15 +226,23 @@ void AWolfCottageSet::SwingDoor(float Fraction)
 void AWolfCottageSet::RestoreProps(bool bCaughtBefore)
 {
 	WindowWarning->SetVisibility(!bCaughtBefore,true);
-	NextGrowl=0; HidePack();
+	NextGrowl=0;
 }
 void AWolfCottageSet::Animate(float T,float DigTime,float Health,bool bBarred)
 {
 	if(WindowWarning->IsVisible())
 		WindowWarning->SetRelativeLocation(FVector(2511,220+7*FMath::Sin(T*1.5),171));
 	if(DigTime>=0 && !bPitOpen)
+	{
+		const float Cycle = MaxDigStroke::Cycle(DigTime);
+		const float Phase = FMath::Frac(Cycle);
+		const float Pry = FMath::SmoothStep(.31f,.46f,Phase)*(1.f-FMath::SmoothStep(.48f,.67f,Phase));
 		for(int I=0;I<WeakPlanks.Num();I++)
-			WeakPlanks[I]->SetRelativeRotation(FRotator(FMath::Sin(DigTime*8+I)*9, (I%3-1)*1.5f,0));
+		{
+			const float Lift = FMath::Cos(.72f*I + FMath::FloorToInt(Cycle))*Pry*7.f;
+			WeakPlanks[I]->SetRelativeRotation(FRotator(Lift, (I%3-1)*1.5f,0));
+		}
+	}
 	if(bBarred)
 	{
 		const float Damage=1-FMath::Clamp(Health,0.f,1.f);
@@ -233,41 +253,41 @@ void AWolfCottageSet::Impact(const FVector& P,float Volume,float Pitch)
 {
 	if(ImpactSound) UGameplayStatics::PlaySoundAtLocation(this,ImpactSound,P,Volume,Pitch,0.f,Nearby);
 }
-void AWolfCottageSet::HidePack() { Pack->Hide(); }
 
-UWolfMeshComponent* AWolfCottageSet::GetLeadWolf() const { return Pack->GetLeadWolf(); }
 
-void AWolfCottageSet::TrailPack(AWolfTrailRoute* Route,float Distance,const FVector& Player)
+UWolfMeshComponent* AWolfCottageSet::GetLeadWolf() const { return Pack->GetAttacker() ? Pack->GetAttacker() : Pack->GetLeadWolf(); }
+
+void AWolfCottageSet::TrailPack(AWolfTrailRoute* Route,float Lead)
 {
-	if (!Route) return;
-	// The pursuit distance marks the front of the attack range. Keep the
-	// hunter's feet behind that mark so the final spring covers real ground.
-	const float Marker = FMath::Max(0.f,Distance-195.f);
-	const FVector Lead = Route->Spline->GetLocationAtDistanceAlongSpline(Marker,ESplineCoordinateSpace::World);
-	const FVector Heading = Route->Spline->GetDirectionAtDistanceAlongSpline(Marker,ESplineCoordinateSpace::World);
-	const float Threat = 1.f - FMath::SmoothStep(225.f,740.f,float(FVector::Dist2D(Lead,Player)));
-	Pack->Hunt(GetWorld()->GetDeltaSeconds(),Lead,Heading,Player,Threat);
-	Growl(Lead,Threat);
+	if (!Route || !Pack->GetLeadWolf()) return;
+	const FVector Front=Pack->GetMember(1)->GetComponentLocation();
+	const auto* Spline=Route->Spline.Get();
+	const float Here=Spline->GetDistanceAlongSplineAtSplineInputKey(Spline->FindInputKeyClosestToWorldLocation(Front));
+	const FVector Guide=Spline->GetLocationAtDistanceAlongSpline(Here+470.f,ESplineCoordinateSpace::World);
+	const FVector Heading=Spline->GetDirectionAtDistanceAlongSpline(Here,ESplineCoordinateSpace::World);
+	// Encounter progress sets a permitted stand-off. The path guide is sampled
+	// from the wolf's own position and stays there if Max disappears behind cover.
+	Pack->Hunt(GetWorld()->GetDeltaSeconds(),Guide,Heading,145.f+Lead,EWolfGroundEncounter::Trail,Lead<180.f);
+	Growl(Front,1.f-FMath::Clamp(Lead/600.f,0.f,1.f));
 }
 
-void AWolfCottageSet::YardPack(const AWolfTrailRoute* Route,const FVector& Target,float Separation,bool bBurning)
+void AWolfCottageSet::YardPack(const AWolfTrailRoute* Route,float Separation,bool bBurning)
 {
-	const FVector D = FVector(1,.24,0).GetSafeNormal();
-	const float Fraction = FMath::Clamp(Separation,0.f,1.f);
-	const float Gap = 195.f + Fraction*(bBurning ? 1050.f : 1400.f);
-	FVector Lead = Target - D*Gap;
-	// Ground the pack at its own end of the yard, even when Max jumps the hollow.
-	Lead.Z = GetActorLocation().Z;
-	if (Route && Route->Spline)
-		Lead.Z = Route->Spline->FindLocationClosestToWorldLocation(Lead,ESplineCoordinateSpace::World).Z;
-	const float Threat = (1.f-Fraction)*(bBurning ? .62f : 1.f);
-	Pack->Hunt(GetWorld()->GetDeltaSeconds(),Lead,D,Target,Threat);
-	Growl(Lead,Threat);
+	if (!Route || !Pack->GetLeadWolf()) return;
+	const auto* Spline=Route->Spline.Get();
+	const FVector Front=Pack->GetMember(1)->GetComponentLocation();
+	const float Here=Spline->GetDistanceAlongSplineAtSplineInputKey(Spline->FindInputKeyClosestToWorldLocation(Front));
+	const FVector Heading=Spline->GetDirectionAtDistanceAlongSpline(Here,ESplineCoordinateSpace::World);
+	const FVector Guide=Spline->GetLocationAtDistanceAlongSpline(Here+480.f,ESplineCoordinateSpace::World);
+	const float Fraction=FMath::Clamp(Separation,0.f,1.f);
+	Pack->Hunt(GetWorld()->GetDeltaSeconds(),Guide,Heading,145.f+Fraction*(bBurning ? 850.f : 590.f),
+		EWolfGroundEncounter::Clearing,Fraction<.14f);
+	Growl(Front,1.f-Fraction);
 }
 
-void AWolfCottageSet::DoorPack(const FVector& Door,bool bRepelled)
+void AWolfCottageSet::DoorPack(const FVector& Door,bool bRepelled,bool bExitExposed,bool bBreached)
 {
-	Pack->GuardDoor(GetWorld()->GetDeltaSeconds(),Door,bRepelled);
+	Pack->GuardDoor(GetWorld()->GetDeltaSeconds(),Door,bRepelled,bExitExposed,bBreached);
 	Growl(Door-FVector(80,0,40),bRepelled ? .4f : .85f);
 }
 
@@ -283,44 +303,7 @@ void AWolfCottageSet::Growl(const FVector& Lead,float Threat)
 
 void AWolfCottageSet::BuildRoof()
 {
-	// Keep the original roof as the interior ceiling. The weathering courses overlap
-	// away from the ridge so their ends cast thin, irregular shadows in the moonlight.
-	auto* Shakes=NewObject<UInstancedStaticMeshComponent>(this);
-	Shakes->SetupAttachment(GetRootComponent());
-	Shakes->SetStaticMesh(Cube);
-	Shakes->SetMaterial(0,Bark);
-	Shakes->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Shakes->SetCanEverAffectNavigation(false);
-	Shakes->RegisterComponent();
-	FRandomStream Weather(401);
-	for (int Side : {-1,1})
-	{
-		const FRotator Pitch(0,0,Side*24.0);
-		Piece(Cube,Bark,FVector(2850,Side*212,437),FVector(8.9,4.78,.10),Pitch);
-		for(int Row=0; Row<8; Row++)
-		{
-			const float Y=30+Row*53;
-			const float Z=538-Y*.445f;
-			for(int Tile=0; Tile<18; Tile++)
-			{
-				const float X=2419+Tile*50+(Row%2 ? 8.f : -8.f);
-				const FVector Center(X,Side*(Y+Weather.FRandRange(-3,3)),Z+Weather.FRandRange(-1,1));
-				const FRotator R(0,Weather.FRandRange(-1.6,1.6),Pitch.Roll);
-				Shakes->AddInstance(FTransform(R,Center,FVector(.505,.67,.044)));
-			}
-		}
-	}
-	for(int End : {-1,1})
-	{
-		const float X=2850+End*402;
-		for(int Row=0;Row<11;Row++)
-		{
-			const float Z=348+Row*16.6f;
-			const float HalfWidth=FMath::Max(12.f,(535-Z)/.445f);
-			Piece(Cube,Bark,FVector(X,0,Z),FVector(.16,HalfWidth*.02,.175));
-		}
-	}
-	Stick(FVector(2400,0,537),FVector(3300,0,537),21,Bark);
+	// The map contains the notched log shell and split-shake roof. The flue rises from the hearth.
 	Piece(Cube,Masonry,FVector(3140,218,452),FVector(1.1,1.17,2.34));
 	for(int I=0;I<4;I++)
 		Piece(Cube,Masonry,FVector(3140+(I%2)*1.4,218,565+I*24),FVector(1.13-I*.035,1.20-I*.035,.235),FRotator(0,2-I,0));

@@ -2,13 +2,16 @@
 #include "DialogueVoiceComponent.h"
 #include "DialogueFaceAnimInstance.h"
 #include "WolfPackComponent.h"
+#include "WolfTrailGameMode.h"
 #include "FirstLegCrossingLayout.h"
+#include "StormfallLayout.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimInstance.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/StaticMeshActor.h"
 #include "EngineUtils.h"
@@ -44,13 +47,18 @@ AFirstLegCrossing::AFirstLegCrossing()
 	StreamStoneC = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Cascades/SM_CreekStoneC/StaticMeshes/SM_CreekStoneC"));
 	NurseLog = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Cascades/SM_NurseLog/StaticMeshes/SM_NurseLog"));
 	Water = Asset<UMaterialInterface>(TEXT("/Game/NightOfTheWolves/Crossing/M_RunningWater"));
+	SkylineHead = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Crossing/Skyline/SM_HeadStation"));
+	SkylineTail = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Crossing/Skyline/SM_TailStation"));
+	SkylineCarriage = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Crossing/Skyline/SM_TrolleyIronwork"));
+	SkylineSheave = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Crossing/Skyline/SM_TrolleySheave"));
+	SkylineSling = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Crossing/Skyline/SM_HempStrop"));
+	SkylineBight = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Crossing/Skyline/SM_CastingBight"));
+	SkylineSteel = Asset<UMaterialInterface>(TEXT("/Game/NightOfTheWolves/Crossing/Skyline/M_SkylineSteel"));
 	WarmGlow = Asset<UMaterialInterface>(TEXT("/Game/NightOfTheWolves/Presentation/M_FireGlow"));
-	MoonGlow = Asset<UMaterialInterface>(TEXT("/Game/NightOfTheWolves/Presentation/M_Moon"));
 	Snag = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/ForestTrees/dead_tree"));
 	Fir = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Cascades/SM_WesternFir/StaticMeshes/SM_WesternFir"));
 	Pine = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Cascades/SM_ShorePine/StaticMeshes/SM_ShorePine"));
 	Fern = Asset<UStaticMesh>(TEXT("/Game/NightOfTheWolves/Cascades/SM_SwordFern/StaticMeshes/SM_SwordFern"));
-	Pack = CreateDefaultSubobject<UWolfPackComponent>(TEXT("HuntingPack"));
 	BanditRoot = CreateDefaultSubobject<USceneComponent>(TEXT("BanditRoot"));
 	BanditRoot->SetupAttachment(RootComponent);
 	Bandit = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("BanditBody"));
@@ -98,7 +106,7 @@ AFirstLegCrossing::AFirstLegCrossing()
 	Bounce->SetMobility(EComponentMobility::Movable);
 	Bounce->SetLightingChannels(false,false,true);
 	Bounce->SetIntensityUnits(ELightUnits::Candelas);
-	Bounce->SetIntensity(6.f);
+	Bounce->SetIntensity(1.8f);
 	Bounce->SetAttenuationRadius(280.f);
 	Bounce->SetSourceRadius(30.f);
 	Bounce->SetSoftSourceRadius(55.f);
@@ -116,16 +124,20 @@ AFirstLegCrossing::AFirstLegCrossing()
 	Shot = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/Crossing/DistantShot"));
 	Coins = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/Crossing/PouchCoins"));
 	Stream = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/Crossing/CreekCurrent"));
+	InitializeCableSounds();
 	DemandVoice = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/BanditDemand"));
 	GoldVoice = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/BanditGold"));
 	StayVoice = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/FirstLeg/Voices/BanditStay"));
+	PainYell = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/FirstLeg/Hermit/SC_HermitFallYell"));
+	Snarl = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/FirstLeg/Growl"));
 	Howl = Asset<USoundBase>(TEXT("/Game/NightOfTheWolves/Presentation/wolf_howls"));
 }
 
 void AFirstLegCrossing::BeginPlay()
 {
 	Super::BeginPlay();
-	for (USoundBase* Recording : {DemandVoice.Get(), GoldVoice.Get(), StayVoice.Get()})
+	Pack = CastChecked<AWolfTrailGameMode>(GetWorld()->GetAuthGameMode())->GetHuntingPack();
+	for (USoundBase* Recording : {DemandVoice.Get(), GoldVoice.Get(), StayVoice.Get(), PainYell.Get(), Snarl.Get(), Shot.Get()})
 		UGameplayStatics::PrimeSound(Recording);
 	BanditClothes->SetLeaderPoseComponent(Bandit);
 	BanditHair->SetLeaderPoseComponent(BanditFace);
@@ -166,10 +178,18 @@ UStaticMeshComponent* AFirstLegCrossing::Part(UStaticMesh* Mesh, UMaterialInterf
 	return Component;
 }
 
-void AFirstLegCrossing::Stamp(UStaticMesh* Mesh, UMaterialInterface* Material, FVector P, FVector S, FRotator R,bool bSolid,bool bVisible)
+void AFirstLegCrossing::Stamp(UStaticMesh* Mesh, UMaterialInterface* Material, FVector P, FVector S, FRotator R,bool bSolid,bool bVisible,FName SurfaceTag)
 {
 	if (!Mesh) return;
-	FBatch* Batch=Batches.FindByPredicate([=](const FBatch& B){return B.Mesh==Mesh && B.Material==Material && B.Solid==bSolid && B.Visible==bVisible;});
+	// Leave the strike visible above the final bend and keep old scatter out of
+	// the actual approach, natural cavern and first chamber behind the root cleft.
+	const FVector Rock = StormfallLayout::LocalPoint(P);
+	const bool bTree=Mesh==Fir || Mesh==Pine || Mesh==Snag;
+	const bool bAtBluff = Rock.X > -710 && Rock.X < 1070 && Rock.Y > -1460 && Rock.Y < 1660;
+	const bool bStrikeWindow = P.X>16440 && P.X<18610 && P.Y>296 && P.Y<1830;
+	if ((bTree && bStrikeWindow) || (bAtBluff && (bTree || Mesh==Fern || Mesh==Round ||
+		Mesh==StreamStoneA || Mesh==StreamStoneB || Mesh==StreamStoneC || Mesh==NurseLog))) return;
+	FBatch* Batch=Batches.FindByPredicate([=](const FBatch& B){return B.Mesh==Mesh && B.Material==Material && B.Solid==bSolid && B.Visible==bVisible && B.SurfaceTag==SurfaceTag;});
 	if (!Batch)
 	{
 		auto* Instances=NewObject<UInstancedStaticMeshComponent>(this);
@@ -178,6 +198,7 @@ void AFirstLegCrossing::Stamp(UStaticMesh* Mesh, UMaterialInterface* Material, F
 		if (Material) Instances->SetMaterial(0,Material);
 		Instances->SetVisibility(bVisible);
 		Instances->SetCastShadow(bVisible);
+		if (!SurfaceTag.IsNone()) Instances->ComponentTags.Add(SurfaceTag);
 		Instances->SetVisibleInRayTracing(bVisible);
 		Instances->SetCollisionProfileName(bSolid ? TEXT("BlockAll") : TEXT("NoCollision"));
 		Instances->SetCanEverAffectNavigation(false);
@@ -194,7 +215,7 @@ void AFirstLegCrossing::Stamp(UStaticMesh* Mesh, UMaterialInterface* Material, F
 			Instances->SetCullDistances(8000,14000);
 		AddInstanceComponent(Instances);
 		Instances->RegisterComponent();
-		Batch=&Batches.Add_GetRef({Mesh,Material,bSolid,bVisible,Instances});
+		Batch=&Batches.Add_GetRef({Mesh,Material,bSolid,bVisible,SurfaceTag,Instances});
 	}
 	Batch->Instances->AddInstance(FTransform(R,P,S));
 }
@@ -285,10 +306,21 @@ void AFirstLegCrossing::BuildBanks()
 		for (int32 I=1; I<Count; ++I)
 		{
 			const FVector A=Points[I-1], B=Points[I], D=B-A, Center=(A+B)*.5;
-			const FRotator Yaw(0,D.Rotation().Yaw,0);
-			Stamp(Cube,nullptr,Center-FVector(0,0,100),{(D.Size2D()+400)/100,50,1.94},Yaw,true,false);
-			Stamp(Cube,nullptr,Center-FVector(0,0,37),{(D.Size2D()+25)/100,6.15,.74},Yaw,true,false);
-			Stamp(Cube,Trail,Center-FVector(0,0,1.4),{D.Size2D()/100,6.15,.028},Yaw);
+			// The last grades climb 80 cm. Carry that pitch across both the
+			// visible tread and the broad supporting bank. Flat segments leave
+			// vertical lips that a wolf's chest catches before its feet step up.
+			const bool bClimbingRoad=Points==FarRoad && I>=Count-3;
+			const FRotator Surface(bClimbingRoad ? D.Rotation().Pitch : 0.,D.Rotation().Yaw,0.);
+			// At the landing the separate cutbank supports the road. Extending the
+			// 50 m wide road foundation across the lip leaves a false floor over water.
+			const bool bLandingRoad = Points == FarRoad && I == 1;
+			if (!bLandingRoad)
+				Stamp(Cube,nullptr,Center-FVector(0,0,100),{(D.Size()+400)/100,50,1.94},Surface,true,false);
+			const FVector FloorStart = bLandingRoad ? A + D.GetSafeNormal2D()*85. : A;
+			Stamp(Cube,nullptr,(FloorStart+B)*.5-FVector(0,0,37),{(FVector::Dist(FloorStart,B)+25)/100,6.15,.74},Surface,true,false);
+			// The original logging road continues beyond the struck tree; the cave
+			// entrance branches north off the uphill tread on its approach side.
+			Stamp(Cube,Trail,(A+B)*.5-FVector(0,0,1.4),{D.Size()/100.,6.15,.028},Surface);
 			const FVector Normal=FVector::CrossProduct(D.GetSafeNormal2D(),FVector::UpVector);
 			for (int32 J=0; J<18; ++J)
 			{
@@ -315,6 +347,19 @@ void AFirstLegCrossing::BuildBanks()
 	};
 	RoadSegments(Road,UE_ARRAY_COUNT(Road));
 	RoadSegments(FarRoad,UE_ARRAY_COUNT(FarRoad));
+
+	// A rocky bank meets the stump end of the tree. The opposite end falls
+	// into the bluff. Low cedar skirts and planted boulders close both shoulders.
+	for (int I=0; I<15; ++I)
+	{
+		const float Along=I*119.f;
+		const FVector P=StormfallLayout::WorldPoint({-1080.-Along,-237.+40.*FMath::Sin(I*1.6f),-29.});
+		const float Size=I%3==0 ? 1.38f : .97f;
+		Stone(P,FVector(Size*4.,Size*3.4,Size*5.2));
+		Stamp(Round,nullptr,P,{Size*3.1,Size*2.6,Size*4.1},FRotator::ZeroRotator,true,false);
+		if (I%2==0)
+			Stamp(Pine,nullptr,P+FVector(115,-70,24),FVector(1.01),FRotator(0,I*39.,0));
+	}
 
 	// Close the route with a wooded rise beyond the checkpoint. Staggered tree
 	// groups leave a view into the last bend from the bandit's clearing.
@@ -343,12 +388,30 @@ void AFirstLegCrossing::BuildBanks()
 			Stone(P+FVector(100,70,12),FVector(Random.FRandRange(2.1,4.9)));
 	}
 
-	// The bridge remnants sit beside the swing, leaving its entire diagonal flight clear.
+	// Younger firs and exposed boulders fill the rising talus behind the strike.
+	// Keep this patch low enough for the old tree and its sky channel to read.
+	FRandomStream Talus(37591);
+	for (int32 I=0; I<126; ++I)
+	{
+		const float X=Talus.FRandRange(18640,20300), Y=Talus.FRandRange(-1060,2520);
+		const float Rim=FMath::Clamp((X-18150.f)/1250.f,0.f,1.65f);
+		const float Z=122.f+Rim*Rim*(360.f+76.f*FMath::Sin(Y*.0027f+X*.0014f)+60.f*FMath::Cos(Y*.0019f-X*.0021f));
+		const FVector Foot(X,Y,Z-12.f);
+		if (I%5==0) Stone(Foot,FVector(Talus.FRandRange(1.3f,3.9f)));
+		else if (I%4==0) Stamp(Fern,nullptr,Foot,FVector(Talus.FRandRange(.96f,1.72f)),{0,Talus.FRandRange(0.f,360.f),0});
+		else
+		{
+			const float Size=Talus.FRandRange(.19f,.54f);
+			Stamp(I%3==0 ? Pine.Get() : Fir.Get(),nullptr,Foot,FVector(Size),{0,Talus.FRandRange(0.f,360.f),0});
+		}
+	}
+
+	// The flood carried the bridge deck away beside the old freight skyline.
 	for (int32 Side : {-1,1})
 	{
 		float End=(Side<0 ? 9780.f : 10990.f);
 		for (int32 I=0;I<5;++I)
-			Stamp(Cube,Bark,{End+Side*I*52.f,-1510,56},{.52,2.45,.16},{0,Random.FRandRange(-4,4),0},true);
+			Stamp(Cube,Bark,{End+Side*I*52.f,-1510,56},{.52,2.45,.16},{0,Random.FRandRange(-4,4),0},true,true,TEXT("TimberFootsteps"));
 		for (int32 BankSide : {-1,1})
 		{
 			float Y=-1510+BankSide*130.f;
@@ -357,19 +420,24 @@ void AFirstLegCrossing::BuildBanks()
 			LogBeam({End+Side*70,Y,-200},{End-Side*55,Y,47},11,Bark);
 		}
 	}
-	LogBeam({9770,-1820,0},{9890,-1690,1020},83,Bark);
-	LogBeam({9890,-1690,1000},{10020,-1430,1760},52,Bark);
-	LogBeam({9970,-1520,1460},Anchor,39,Bark);
-	LogBeam(Anchor,Anchor+FVector(140,120,45),15,Bark);
-	LogBeam({9875,-1700,980},{9670,-1980,1240},21,Bark);
-	// A small auxiliary fill light keeps the landing lip readable through the trees.
-	for (const FVector& P : {Landing+FVector(0,0,310),BanditMark+FVector(-80,0,290)})
-	{
-		auto* Light=NewObject<UPointLightComponent>(this);
-		Light->SetupAttachment(RootComponent); Light->SetRelativeLocation(P);
-		Light->SetIntensity(1350); Light->SetAttenuationRadius(950); Light->SetCastShadows(false);
-		Light->SetLightColor(FLinearColor(.54,.7,1)); AddInstanceComponent(Light); Light->RegisterComponent();
-	}
+	// A break in the canopy lights this stretch of road even before the robbery.
+	// The oblique falloff follows the ground and also catches the scattered coins.
+	auto* ClearingLight = NewObject<USpotLightComponent>(this, TEXT("MoonThroughCanopy"));
+	const FVector ToClearing(190, 125, -300);
+	ClearingLight->SetupAttachment(RootComponent);
+	ClearingLight->SetRelativeLocationAndRotation(GoldPatch - ToClearing, ToClearing.Rotation());
+	ClearingLight->SetIntensityUnits(ELightUnits::Candelas);
+	ClearingLight->SetIntensity(18.f);
+	ClearingLight->SetInnerConeAngle(12.f);
+	ClearingLight->SetOuterConeAngle(32.f);
+	ClearingLight->SetSourceRadius(32.f);
+	ClearingLight->SetAttenuationRadius(680.f);
+	ClearingLight->SetLightColor(FLinearColor(.68f, .81f, 1.f));
+	ClearingLight->SetCastShadows(false);
+	ClearingLight->SetVolumetricScatteringIntensity(0.f);
+	AddInstanceComponent(ClearingLight);
+	ClearingLight->RegisterComponent();
+
 	if (Stream)
 	{
 		auto* Audio=NewObject<UAudioComponent>(this);
@@ -384,15 +452,11 @@ void AFirstLegCrossing::BuildBanks()
 
 void AFirstLegCrossing::BuildProps()
 {
-	Cord=Part(Pole,RopeMat);
+	BuildCableway();
 	Bag=Part(GoldPouch,nullptr);
 	for (int32 I=0;I<9;++I)
 	{
 		auto* Coin=Part(Pole,GoldMat); Coin->SetRelativeScale3D({.074,.074,.014}); SpilledCoins.Add(Coin);
-	}
-	for (int32 I=0;I<12;++I)
-	{
-		auto* Marker=Part(Round,MoonGlow); Marker->SetWorldScale3D({.045,.075,.048}); TargetRing.Add(Marker);
 	}
 	Speech=NewObject<UDialogueVoiceComponent>(this, TEXT("BanditVoice"));
 	Speech->SetupAttachment(BanditRoot); Speech->SetRelativeLocation(FVector(0,0,155));
@@ -422,5 +486,4 @@ void AFirstLegCrossing::BuildProps()
 	auto* Barrel = Part(Pole,BlackMat,Grip);
 	Barrel->SetRelativeLocationAndRotation(FVector(16,0,7),FRotator(90,0,0));
 	Barrel->SetRelativeScale3D(FVector(.025,.025,.145));
-	Pack->SpawnMembers();
 }

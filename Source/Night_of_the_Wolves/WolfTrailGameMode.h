@@ -6,6 +6,9 @@
 #include "WolfTrailGameMode.generated.h"
 
 class AFirstLegCrossing;
+class AStormfallSet;
+class ARiverDrowningShot;
+class UWolfPackComponent;
 class AWolfCottageSet;
 class ACottageHermit;
 class AWolfCaptureCamera;
@@ -68,10 +71,15 @@ public:
 	float WolfHowlVolume = .25f;
 	UPROPERTY(EditDefaultsOnly, Category="Presentation")
 	float ForestWindVolume = .12f;
+	UPROPERTY(EditDefaultsOnly, Category="Presentation|Music")
+	TObjectPtr<USoundBase> PursuitMusic;
+	UPROPERTY(EditDefaultsOnly, Category="Presentation|Music", meta=(ClampMin="0", ClampMax="1"))
+	float MusicVolume = .37f;
+	UPROPERTY(EditDefaultsOnly, Category="Presentation|Music", meta=(ClampMin="0", Units="s"))
+	float MusicFadeInSeconds = 2.2f;
 
 	FWolfInventory Inventory;
 	int32 Checkpoint = 0;
-	bool bLegComplete = false;
 	bool bWolfCaptured = false;
 	bool bShotByHermit = false;
 	bool bSheltered = false;
@@ -86,41 +94,66 @@ public:
 	bool IsDead() const { return !DeathCause.IsEmpty(); }
 	bool IsWolfPouncing() const { return bWolfPouncing; }
 	bool IsTraversalLocked() const;
+	bool IsWatchingCreekPack() const;
+	bool IsOnCabinFloor(const FVector& P) const { return IsInside(P); }
 	float DiggingTime() const { return DigElapsed; }
 	void Interact();
 	void UseEquipped();
+	bool IsRiverDrowning() const { return bRiverDrowning; }
+	bool HasStormStruck() const { return StrikeTime >= 0.f; }
+	bool AreCaveRootsClear() const;
+	bool HasTreeFlame() const { return bTreeFlame && Inventory.bBurning && Inventory.Equipped == TEXT("Firebrand"); }
 	void RetryCheckpoint();
 	void NewTrail();
 	bool CommitCheckpoint(int32 Id, FVector Location, FRotator Facing);
 	void Die(const FString& Cause);
 	UFUNCTION(BlueprintCallable, Category="Pursuit") void PresentWolfCapture();
+	UWolfPackComponent* GetHuntingPack() const { return HuntingPack; }
 
 private:
 	void InitializeTrail();
 	void BeginOpening(APawn& Pawn);
 	void FinishOpening();
+	void StartPursuitMusic();
 	UPROPERTY(Transient) TObjectPtr<AWolfTrailOpening> OpeningCamera;
+	UPROPERTY(VisibleAnywhere, Category="Presentation|Wolf capture") TObjectPtr<UAudioComponent> WolfCardSnarl;
 	friend class AWolfCaptureCamera;
 	void ShowDeathCard();
 	UPROPERTY(Transient) TObjectPtr<AWolfCaptureCamera> CaptureCamera;
 	bool bWolfPouncing = false;
 	friend class UWolfTrailSave;
+	UPROPERTY(VisibleAnywhere, Category="Wolf pack") TObjectPtr<UWolfPackComponent> HuntingPack;
 	UPROPERTY() TObjectPtr<AWolfCottageSet> Cottage;
 	UPROPERTY() TObjectPtr<ACottageHermit> Hermit;
 	UPROPERTY() TObjectPtr<AFirstLegCrossing> Crossing;
+	UPROPERTY() TObjectPtr<AStormfallSet> Storm;
+	friend class ARiverDrowningShot;
+	UPROPERTY(Transient) TObjectPtr<ARiverDrowningShot> RiverShot;
+	bool bRiverDrowning = false;
+	UPROPERTY(EditDefaultsOnly, Category="Stormfall", meta=(ClampMin="0.5",Units="s")) float RootBurnSeconds = 2.4f;
+	float StrikeTime = -1.f;
+	float BendTime = 0.f;
+	float RootBurnTime = -1.f;
+	bool bTreeFlame = false;
+	bool bInsideCave = false;
+	bool bThroughRoots = false;
+	void ResetStormfall(int32 Id);
+	void UpdateStormfall(float Dt, APawn& Max);
+	void StormAction(APawn& Max, bool bItem);
 	UPROPERTY() TObjectPtr<UAudioComponent> HowlLoop;
 	UPROPERTY() TObjectPtr<UAudioComponent> WindLoop;
+	UPROPERTY(Transient) TObjectPtr<UAudioComponent> Score;
 	TWeakObjectPtr<AWolfTrailRoute> Route;
 	TWeakObjectPtr<APointLight> FireplaceLight;
 	TWeakObjectPtr<APointLight> WindowLight;
 	FTransform CheckpointTransform;
+	FVector CheckpointPouchSite = FVector::ZeroVector;
 	FWolfInventory CheckpointItems;
 	FTimerHandle RetryTimer;
 	bool bReady = false;
 	bool bDoorOpen = false;
 	bool bDoorwayGuarded = false;
 	bool bDoorBreached = false;
-	bool bWarnedTable = false;
 	float OpeningSeconds = 0;
 	float StartDistance = 0;
 	float WolfDistance = 0;
@@ -130,13 +163,15 @@ private:
 	float FireRemaining = 0;
 	float BestDepartureDistance = 0;
 	float DigElapsed = -1;
+	FVector DigStanceStart, DigStanceEnd;
+	FRotator DigStartFacing, DigFacing;
 	float HermitElapsed = -1;
 	bool bHermitFired = false;
 	bool bHermitShouted = false;
 	float DoorImpactIn = 0;
 	float NoticeRemaining = 0;
 	FString Notice;
-	enum class ETarget { None, Shovel, Earth, Knock, Bar, Open, Close, Supplies, Brand };
+	enum class ETarget { None, Shovel, Earth, Knock, HandsFull, Bar, Open, Close, Rope, Gold, Brand };
 	ETarget Target(const APawn& Pawn, bool bItem) const;
 	void Act(bool bItem);
 	void UpdatePrompt(const APawn& Pawn);

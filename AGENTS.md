@@ -1,10 +1,13 @@
 # Project instructions
 
 - Use the local Linux source build of UE 5.9 Preview 2 at `~/UnrealEngine-5.9-preview-2`. Check unfamiliar APIs against its source and headers.
-- Read `docs/GAME_DESIGN.md`, `docs/MILESTONES.md` and `mynotes/NIGHT_OF_THE_WOLVES_FIRST_LEG.md` for the intended progression. The first leg continues through the creek and the bandit to an escape checkpoint. The forest transcript provides art direction. Current authoring choices and sources are in `docs/FOREST.md`.
+- Read `docs/GAME_DESIGN.md`, `docs/MILESTONES.md` and `mynotes/NIGHT_OF_THE_WOLVES_FIRST_LEG.md` for the intended progression. The first leg continues through the creek and the bandit to the escape bend (CP5). A lightning-struck fir blocks the road beyond CP5. Fire from the trunk opens a root-screened cave passage to CP6. The forest transcript provides art direction. Current authoring choices and sources are in `docs/FOREST.md`.
 - Work in playable increments. Keep gameplay rules in C++ and expose tuning values where appropriate. Use Unreal Editor operations for binary assets. Record meaningful verification in `docs/PLAYTEST.md`, including the build configuration and whether input, graphics or audio were exercised.
+- Write HUD context as something Max can notice. Show controls for available actions and let players infer puzzle solutions and experiment across retries.
 - Use the saved startup map `/Game/NightOfTheWolves/Maps/M1_Trail` and its `WolfTrailGameMode`. The template map remains at `/Game/ThirdPerson/Lvl_ThirdPerson`. Keep route geometry, pursuit spline, cottage interactions and creek landing aligned when editing the level.
 - The saved assets are ready to play. Editor Python imports and dresses assets. The packaged game uses cooked assets, baked foliage, a PCG graph and native gameplay code.
+
+For wolf behavior and verification, see the [pack design brief](docs/WOLVES.md) and the [implemented controls, tuning and Development test commands](docs/WOLF_PACK.md). The game mode owns the five persistent pawns throughout the leg.
 
 ## Build and open the editor
 
@@ -18,7 +21,7 @@ UE_PROJECT="$PROJECT_DIR/Night_of_the_Wolves.uproject"
 "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" "$UE_PROJECT"
 ```
 
-Press Play in the startup map. `BP_Max` inherits third-person movement, camera and input from the template. His locomotion Blueprint animates the MetaHuman skeleton, and the game C++ classes drive equipment, sprint, interactions and the rope swing. See [Max authoring](docs/MAX.md) for the Creator asset and the cooked character assembly.
+Press Play in the startup map. `BP_Max` inherits third-person movement, camera and input from the template. His locomotion Blueprint animates the MetaHuman skeleton, and the game C++ classes drive equipment, sprint, interactions and the cable trolley. See [Max authoring](docs/MAX.md) for the Creator asset and the cooked character assembly.
 
 ## Package and launch on Linux
 
@@ -36,6 +39,12 @@ mkdir -p "$UE_OUTPUT"
 ```
 
 Set `UE_OUTPUT="$HOME/Builds/NightOfTheWolves-Linux"` to use the original external archive location. Current playtest instructions use `Saved/MoonlitTrail-Linux`.
+
+## Play the river, bandit and storm checkpoints
+
+Run `./Scripts/play_checkpoint.sh river` for the broken bridge, `./Scripts/play_checkpoint.sh bandit` for the far bank or `./Scripts/play_checkpoint.sh storm` for the escape bend. They launch the archived Shipping game with a temporary copy of an earned checkpoint from `Tests/Fixtures`. A regular launch resumes the player’s own save.
+
+For an uninterrupted Development run from the trailhead through the cave, use `-FirstLegTest -FirstLegClean -IntoStorm`. The full first-leg recovery driver also throws the sack uphill, loses it, retries and throws into the approaching pack. To test the robbery in isolation, copy the CP4 fixture into a private save directory as described below and run `-ExecCmds="t.MaxFPS 0,Wolf.TestRobbery"`. It exercises waiting and sprinting on both the road and its shoulder. To exercise the cave in isolation, copy the bend fixture to `Saved/SaveGames/MoonlitTrail-v1.sav` inside a temporary user directory. Use `-SaveToUserDir -UserDir=<absolute temporary directory>` with `-ExecCmds="t.MaxFPS 0,Wolf.TestStormfall"`. Repeat against the resulting save with `-StormResume` to check cold CP6. Add `-StormPhotos` for rendered frames. `-StormRetry` retries during the pack’s reaction shot and `-StormLinger` waits in the clearing for over a game minute with an unlit brand.
 
 ## Verify a gameplay change
 

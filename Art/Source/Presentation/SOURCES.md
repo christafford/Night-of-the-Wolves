@@ -29,3 +29,7 @@ python3 Scripts/opening/compose_title.py
   -run=pythonscript "-script=$PWD/Scripts/opening/import_title.py" \
   -nullrhi -unattended -nop4 -nosound
 ```
+
+## Death-card snarl
+
+`WolfCardSnarl.wav` uses a close-miked canine snarl from the USC optical sound effects collection, digitized by Craig Smith and released under CC0. The 1.64-second edit begins at 18.09 seconds in the recording, rolls off low rumble and tape hiss, and tapers the tail. The packaged game plays this one-shot at the onset of the wolf death card. [Recording and license](https://freesound.org/people/craigsmith/sounds/479633/) · [Unreal import](../../../Scripts/opening/import_card_snarl.py)

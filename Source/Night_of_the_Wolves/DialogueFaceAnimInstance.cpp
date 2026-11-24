@@ -70,6 +70,7 @@ struct FDialogueFaceProxy final : public FAnimInstanceProxy
 		Interest = Face.Interest;
 		LookDown = Face.DownwardGaze;
 		Blink = Face.BlinkAmount;
+		Fear = Face.Alarm;
 	}
 
 	void CacheFace(const FBoneContainer& Bones)
@@ -102,7 +103,7 @@ struct FDialogueFaceProxy final : public FAnimInstanceProxy
 		const FBoneContainer& Bones = Output.Pose.GetBoneContainer();
 		if (BoneSerial != Bones.GetSerialNumber()) CacheFace(Bones);
 
-		const float Open = Mouth.JawOpen * (1.f - Mouth.LipClose) * (1.f - .55f * Mouth.LipTeeth);
+		const float Open = FMath::Max(Mouth.JawOpen, .50f * Fear) * (1.f - Mouth.LipClose) * (1.f - .55f * Mouth.LipTeeth);
 		for (const FFaceJoint& Joint : Joints)
 		{
 			FVector Offset = FVector::ZeroVector;
@@ -128,20 +129,22 @@ struct FDialogueFaceProxy final : public FAnimInstanceProxy
 				break;
 			}
 			case EFacialJoint::Corner:
-				Offset.X = Side * (.92f * Mouth.LipWide - 1.03f * Mouth.LipRound + .27f * Interest);
+				Offset.X = Side * (.92f * Mouth.LipWide - 1.03f * Mouth.LipRound + .27f * Interest + .42f * Fear);
 				Offset.Y = .63f * Mouth.LipRound - .29f * Mouth.LipWide - .33f * Interest;
-				Offset.Z = -.72f * Open + (.36f + .16f * Side) * Interest - .28f * Anger;
+				Offset.Z = -.72f * Open + (.36f + .16f * Side) * Interest - .28f * Anger - .42f * Fear;
 				break;
 			case EFacialJoint::Brow:
 			{
 				const float Inner = 1.f - FMath::Clamp(FMath::Abs(Joint.Lateral) / 5.f, 0.f, 1.f);
 				Offset.X = -.44f * Side * Anger * Inner;
 				Offset.Z = -Anger * (.14f + .78f * Inner) + Interest * (.27f + .41f * Inner + .16f * Side);
+				Offset.Z += (.68f + .85f * Inner) * Fear;
+				Offset.X -= .26f * Side * Fear * Inner;
 				Offset *= Joint.Influence;
 				break;
 			}
 			case EFacialJoint::Eye: Angle = -7.f * LookDown; break;
-			case EFacialJoint::UpperLid: Angle = -33.f * Blink - 6.f * Anger - 4.f * LookDown + 1.5f * Interest; break;
+			case EFacialJoint::UpperLid: Angle = -33.f * Blink - 6.f * Anger - 4.f * LookDown + 1.5f * Interest + 10.f * Fear; break;
 			case EFacialJoint::LowerLid: Angle = 7.f * Blink + 3.f * Anger + .75f * Interest; break;
 			case EFacialJoint::Cheek:
 				Offset = FVector(Side * (.18f * Mouth.LipWide - .19f * Mouth.LipRound), -.12f * Interest,
@@ -164,13 +167,13 @@ struct FDialogueFaceProxy final : public FAnimInstanceProxy
 	TArray<FFaceJoint> Joints;
 	int32 BoneSerial = INDEX_NONE;
 	FDialogueMouthPose Mouth;
-	float Anger = 0.f, Interest = 0.f, LookDown = 0.f, Blink = 0.f;
+	float Anger = 0.f, Interest = 0.f, LookDown = 0.f, Blink = 0.f, Fear = 0.f;
 };
 
 FAnimInstanceProxy* UDialogueFaceAnimInstance::CreateAnimInstanceProxy() { return new FDialogueFaceProxy(this); }
 void UDialogueFaceAnimInstance::DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy) { delete InProxy; }
 
-void UDialogueFaceAnimInstance::SetPerformance(const FDialogueMouthPose& Mouth, float Anger, float GoldInterest, float LookDown, float Blink)
+void UDialogueFaceAnimInstance::SetPerformance(const FDialogueMouthPose& Mouth, float Anger, float GoldInterest, float LookDown, float Blink, float Fear)
 {
 	JawOpen = Mouth.JawOpen;
 	LipRound = Mouth.LipRound;
@@ -181,4 +184,5 @@ void UDialogueFaceAnimInstance::SetPerformance(const FDialogueMouthPose& Mouth, 
 	Interest = GoldInterest;
 	DownwardGaze = LookDown;
 	BlinkAmount = Blink;
+	Alarm = Fear;
 }

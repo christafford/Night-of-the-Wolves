@@ -12,41 +12,47 @@ REVISION = "5ecdb67327fd37bb2e042aab12ff7391903235d3"
 # Keep the three beats in one recording so the same actor plays the entire scene.
 CAST = {
     "Hermit": (
-        173,
-        "Stay away from my door!\n\nI warned you!\n\nGet me out of here!",
-        "One older male frontier hermit, wiry and ferociously short-tempered. Western American "
-        "English with a dry southwestern drawl. His high, pinched, gravelly rasp has a nasal "
-        "twang; his pitch jumps when he loses his temper. Three separate lines of dialogue with "
-        "a full silent beat between them. First he growls a warning through clenched teeth, "
-        "stretching 'my door'. Then his temper snaps and he barks 'I warned you!' in one blow. "
-        "Finally, trapped and furious, he yells for help; his voice cracks upward on 'out'. "
-        "Start on the first word. Close, dry solo voice.",
+        583,
+        "Stay away from my door.\n\nI warned you!\n\nGet me out of here!",
+        "An old man alone in a timber cabin, speaking American English. Very low weathered "
+        "bass-baritone, deep resonant chest voice with a rough creaking edge on sustained "
+        "vowels. He speaks very slowly and distinctly. The quiet restraint in his first "
+        "warning is frightening. Give 'away' and 'my door' weight. Pause to breathe after "
+        "the warning. 'I warned you!' is projected directly at the intruder: a slow, "
+        "deliberate shout, heavy stress on 'warned'. Pause again. Finally he loses his "
+        "footing and calls for help, fear breaking through the gravel on 'out of here'. "
+        "Three separate spoken lines in one voice, a full silent beat between them. Dry solo dialogue.",
     ),
     "Bandit": (
-        2719,
-        "Hands up! Don't move.\n\nThe bag. Put it down. Slowly.\n\nStay right there.",
-        "One middle-aged Mexican outlaw speaking fluent, lightly Mexican-accented English. "
-        "A lean, weathered, medium-low voice, a little breath and grain behind the teeth. "
-        "He sounds amused at having the upper hand and can turn dangerous in a word. "
-        "Three separate lines, a full silent beat between them. 'Hands up! Don't move' "
-        "is a sharp, quick ambush. His voice warms with greedy interest on 'the bag', "
-        "then he draws out 'slowly' as a quiet threat. 'Stay right there' is almost friendly, "
-        "with a hard downward turn on 'there'. Intimate western film dialogue, dry solo voice.",
+        1459,
+        "Hands up. Don't move.\n\nThe bag. Put it down. Slowly.\n\nStay right there.",
+        "A middle-aged man from northern Mexico. Spanish is his first language. Deliver "
+        "the English script in his natural, clearly audible northern Mexican accent: "
+        "pure rounded vowels, even syllables, clear consonants. Low, warm baritone, "
+        "smooth and resonant with a little smoke in the release. His authority is calm. "
+        "He takes his time. 'Hands up' is a firm command; let a beat pass before "
+        "'don't move'. Seeing the gold, he savors 'the bag', pauses, then coaxes the "
+        "traveler to put it down, lingering over 'slowly'. A full beat, then "
+        "'stay right there' in a near-intimate, suddenly cold voice. Spacious pauses "
+        "between all three lines. Dry solo film dialogue, speak only the script.",
     ),
 }
 
-# Edit points in seconds in the approved dry takes. Keep the breath and release of each line.
-# The warning is heard through timber; the pit has a short reflection below ground.
+# The hermit's mids carry the rasp through timber. A little saturation thickens
+# the louder vowels, and pitch-preserving time stretch leaves room for his delivery.
+HERMIT_TONE = "highpass=f=62,asoftclip=type=tanh:threshold=0.30:oversample=4"
+
+# Edit in breaths between lines and retain the bandit's pauses inside each command.
 EDITS = {
     "Hermit": [
-        ("HermitWarning", [(0.0, 1.53)], "highpass=f=90,lowpass=f=2600", -19),
-        ("HermitShout", [(1.70, 2.73)], "highpass=f=80", -16),
-        ("HermitPit", [(3.13, 4.28)], "highpass=f=105,lowpass=f=3400,aecho=0.90:0.95:57:0.16", -18),
+        ("HermitWarning", 0.0, 2.51, HERMIT_TONE + ",atempo=.89,lowpass=f=2800", -19),
+        ("HermitShout", 2.73, 3.89, HERMIT_TONE + ",atempo=.79", -16),
+        ("HermitPit", 4.01, 5.12, HERMIT_TONE + ",atempo=.82,lowpass=f=3400,aecho=0.90:0.95:57:0.16", -18),
     ],
     "Bandit": [
-        ("BanditDemand", [(0.055, 0.88), (1.96, 2.92)], "highpass=f=78", -17),
-        ("BanditGold", [(3.16, 3.99), (4.32, 5.35), (5.57, 6.72)], "highpass=f=78", -18),
-        ("BanditStay", [(7.20, 8.47)], "highpass=f=78", -18),
+        ("BanditDemand", 0.0, 3.08, "highpass=f=66", -17),
+        ("BanditGold", 3.59, 7.92, "highpass=f=66", -18),
+        ("BanditStay", 8.43, 10.20, "highpass=f=66", -18),
     ],
 }
 
@@ -81,15 +87,12 @@ def master():
                 rate = dry.getframerate()
                 if dry.getnchannels() != 1 or dry.getsampwidth() != 3:
                     raise ValueError(f"Expected mono PCM24 in {take}")
-                for name, cuts, effect, loudness in lines:
-                    # Join in the quiet spaces, keeping the spoken cadence inside each phrase.
-                    pcm = bytearray()
-                    for start, end in cuts:
-                        first, last = round(start * rate), round(end * rate)
-                        if not 0 <= first < last <= dry.getnframes():
-                            raise ValueError(f"{name} edit falls outside {take}")
-                        dry.setpos(first)
-                        pcm.extend(dry.readframes(last - first))
+                for name, start, end, effect, loudness in lines:
+                    first, last = round(start * rate), round(end * rate)
+                    if not 0 <= first < last <= dry.getnframes():
+                        raise ValueError(f"{name} edit falls outside {take}")
+                    dry.setpos(first)
+                    pcm = dry.readframes(last - first)
                     subprocess.run(
                         ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-f", "s24le",
                          "-ar", str(rate), "-ac", "1", "-i", "pipe:0",

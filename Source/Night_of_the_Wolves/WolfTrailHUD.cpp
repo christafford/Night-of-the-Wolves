@@ -188,9 +188,9 @@ void AWolfTrailHUD::DrawHUD()
 		if (CP==2 && Mode->Inventory.bBurning && P.X < 2940 && P.X>2700 && PC->GetOverlay()==ANight_of_the_WolvesPlayerController::EOverlay::None) Shot=TEXT("03-Hearth");
 		if (CP==3 && Mode->Inventory.bBurning && PC->GetOverlay()==ANight_of_the_WolvesPlayerController::EOverlay::None) Shot=TEXT("04-Creek");
 		if (CP==3 && Mode->Inventory.bBurning && PC->GetOverlay()==ANight_of_the_WolvesPlayerController::EOverlay::Inventory && PC->Highlight()!=Mode->Inventory.Items.Find(TEXT("Firebrand"))+1) Shot=TEXT("05-Inventory");
-		if (CP==3 && Mode->IsTraversalLocked() && P.X>10100) Shot=TEXT("06-Swing");
+		if (CP==3 && Mode->IsTraversalLocked() && P.X>10100) Shot=TEXT("06-Cableway");
 		if (CP==4 && Prompt.Contains(TEXT("belongings"))) Shot=TEXT("07-Bandit");
-		if (CP==4 && Prompt.Contains(TEXT("Toss the sack"))) Shot=TEXT("08-Gold");
+		if (CP==4 && Prompt.Contains(TEXT("Throw gold"))) Shot=TEXT("08-Gold");
 		if (CP==5) Shot=TEXT("09-Bend");
 		if (!Shot.IsEmpty() && !ReviewShots.Contains(Shot) && !FScreenshotRequest::IsScreenshotRequested())
 		{
@@ -238,7 +238,7 @@ void AWolfTrailHUD::DrawHUD()
 	}
 	if (Mode->IsDead())
 	{
-		if (Mode->IsWolfPouncing()) return;
+		if (Mode->IsWolfPouncing() || Mode->IsRiverDrowning()) return;
 		DrawRect(FLinearColor(.015,.015,.019,.87),0,0,W,H);
 		if (Mode->bWolfCaptured && WolfAttackTexture)
 		{
@@ -251,13 +251,7 @@ void AWolfTrailHUD::DrawHUD()
 		Caption(Mode->DeathCause,H*.59,Mist,.95f);
 		return;
 	}
-	if (Mode->bLegComplete)
-	{
-		Caption(TEXT("Moonlit Trail complete"),H*.18,Linen,1.5f);
-		Caption(TEXT("Beyond the bend, a familiar howl."),H*.25,Mist,1.f);
-		CenterText(PC->UsingPad()?TEXT("Menu   Pause"):TEXT("Esc   Pause"),W*.5,H*.91,.85*S,Mist);
-		return;
-	}
+	if (Mode->IsWatchingCreekPack()) return;
 	Caption(Mode->InteractionPrompt,H*.77,Linen,1.08f);
 	Caption(Mode->ThreatCue,H*.12,Mist,.95f);
 	if (PC->NoticeUntil > GetWorld()->GetTimeSeconds()) Caption(PC->ItemNotice(),H*.85,Amber,.85f);

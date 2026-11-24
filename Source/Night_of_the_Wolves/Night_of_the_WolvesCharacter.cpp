@@ -2,6 +2,8 @@
 
 #include "Night_of_the_WolvesCharacter.h"
 #include "WolfHeldItem.h"
+#include "MaxFootsteps.h"
+#include "WolfTrailGameMode.h"
 #include "Animation/AnimInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/SkeletalMesh.h"
@@ -41,6 +43,7 @@ ANight_of_the_WolvesCharacter::ANight_of_the_WolvesCharacter()
 		Part->SetCanEverAffectNavigation(false);
 	}
 
+	CreateDefaultSubobject<UMaxFootsteps>(TEXT("Max footfalls"));
 	auto* HeldItem = CreateDefaultSubobject<UWolfHeldItem>(TEXT("Held item"));
 	HeldItem->SetupAttachment(GetMesh(), TEXT("hand_r"));
 
@@ -139,6 +142,24 @@ void ANight_of_the_WolvesCharacter::SetHangingAppearance(USkinnedMeshComponent* 
 	Outfit->SetLeaderPoseComponent(HangingBody ? HangingBody : GetMesh());
 }
 
+void ANight_of_the_WolvesCharacter::BeginDigAppearance(USkinnedMeshComponent* WorkingBody)
+{
+	RestFaceRelative = Face->GetRelativeTransform();
+	FaceFromHead = Face->GetComponentTransform().GetRelativeTransform(Face->GetSocketTransform(TEXT("head")));
+	SetHangingAppearance(WorkingBody);
+}
+
+void ANight_of_the_WolvesCharacter::FollowDigHead(const FTransform& Head)
+{
+	Face->SetWorldTransform(FaceFromHead * Head);
+}
+
+void ANight_of_the_WolvesCharacter::EndDigAppearance()
+{
+	Face->SetRelativeTransform(RestFaceRelative);
+	SetHangingAppearance(nullptr);
+}
+
 void ANight_of_the_WolvesCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
@@ -179,8 +200,16 @@ void ANight_of_the_WolvesCharacter::Look(const FInputActionValue& Value)
 	DoLook(LookAxisVector.X, LookAxisVector.Y);
 }
 
+bool ANight_of_the_WolvesCharacter::CanJumpInternal_Implementation() const
+{
+	const auto* Game = GetWorld()->GetAuthGameMode<AWolfTrailGameMode>();
+	return (!Game || Game->DiggingTime() < 0.f) && Super::CanJumpInternal_Implementation();
+}
+
 void ANight_of_the_WolvesCharacter::DoMove(float Right, float Forward)
 {
+	const auto* Game = GetWorld()->GetAuthGameMode<AWolfTrailGameMode>();
+	if (Game && Game->DiggingTime() >= 0.f) return;
 	if (GetController() != nullptr)
 	{
 		// find out which way is forward

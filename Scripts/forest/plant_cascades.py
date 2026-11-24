@@ -395,22 +395,6 @@ for label, actor in by.items():
         _, trail_z, _ = centerline(p.x)
         actor.set_actor_location(u.Vector(p.x, p.y, trail_z + 300), False, False)
 
-# Cool fill preserves bark and fern detail in moon shadows.
-fill = by.get("Cascades diffuse sky fill") or actors.spawn_actor_from_class(
-    u.DirectionalLight, u.Vector(0, 0, 730)
-)
-fill.set_actor_label("Cascades diffuse sky fill")
-fill.set_actor_rotation(u.Rotator(pitch=-64, yaw=122), False)
-fill.light_component.set_editor_property("cast_shadows", False)
-fill.light_component.set_intensity(0.22)
-fill.light_component.set_light_color(u.LinearColor(0.35, 0.52, 0.82, 1))
-fog = by["M4 moonlit mist"].component
-fog.set_fog_density(0.032)
-fog.set_fog_height_falloff(0.16)
-fog.set_fog_inscattering_color(u.LinearColor(0.026, 0.043, 0.069, 1))
-fog.set_fog_max_opacity(0.91)
-fog.set_volumetric_fog(True)
-fog.set_volumetric_fog_distance(7200.0)
 if not levels.save_current_level():
     raise RuntimeError("Saving map failed")
 u.log(

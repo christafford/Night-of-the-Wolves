@@ -1,4 +1,6 @@
 #include "WolfTrailGameMode.h"
+#include "WolfPackComponent.h"
+#include "MaxDigStroke.h"
 #include "WolfCaptureCamera.h"
 #include "WolfTrailOpening.h"
 #include "WolfMeshComponent.h"
@@ -6,6 +8,10 @@
 #include "CottageHermit.h"
 #include "DialogueArticulation.h"
 #include "FirstLegCrossing.h"
+#include "StormfallSet.h"
+#include "StormfallLayout.h"
+#include "RiverDrowningShot.h"
+#include "Night_of_the_WolvesCharacter.h"
 #include "WolfTrailHUD.h"
 #include "WolfTrailSave.h"
 #include "WolfTrailRoute.h"
@@ -28,7 +34,6 @@ namespace
 {
 const FVector CottageApproach(1400,-900,105);
 const FVector IndoorRetry(2650,0,100);
-const FVector TablePosition(2800,-230,0);
 const FVector HearthPosition(3010,215,0);
 bool Near(const FVector& A,const FVector& B,float Radius)
 {
@@ -39,16 +44,31 @@ bool Near(const FVector& A,const FVector& B,float Radius)
 AWolfTrailGameMode::AWolfTrailGameMode()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("TrailScene")));
+	HuntingPack = CreateDefaultSubobject<UWolfPackComponent>(TEXT("HuntingPack"));
 	static ConstructorHelpers::FClassFinder<APawn> Character(TEXT("/Game/NightOfTheWolves/Max/BP_Max"));
 	static ConstructorHelpers::FClassFinder<APlayerController> Controller(TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonPlayerController"));
 	if (Character.Succeeded()) DefaultPawnClass = Character.Class;
 	if (Controller.Succeeded()) PlayerControllerClass = Controller.Class;
 	HUDClass = AWolfTrailHUD::StaticClass();
 	OpeningCameraClass = AWolfTrailOpening::StaticClass();
+	WolfCardSnarl = CreateDefaultSubobject<UAudioComponent>(TEXT("WolfCardSnarl"));
+	WolfCardSnarl->SetupAttachment(GetRootComponent());
+	WolfCardSnarl->bAutoActivate = false;
+	WolfCardSnarl->bAllowSpatialization = false;
+	static ConstructorHelpers::FObjectFinder<USoundBase> CardGrowl(TEXT("/Game/NightOfTheWolves/Presentation/WolfCardSnarl"));
+	WolfCardSnarl->SetSound(CardGrowl.Object);
+
 	static ConstructorHelpers::FObjectFinder<USoundBase> Howls(TEXT("/Game/NightOfTheWolves/Presentation/wolf_howls"));
 	static ConstructorHelpers::FObjectFinder<USoundBase> Wind(TEXT("/Game/NightOfTheWolves/Presentation/forest_wind"));
 	WolfHowls = Howls.Object;
 	ForestWind = Wind.Object;
+	static ConstructorHelpers::FObjectFinder<USoundBase> Music(TEXT("/Game/NightOfTheWolves/Music/SW_MoonlitPursuit"));
+	PursuitMusic = Music.Object;
+	Score = CreateDefaultSubobject<UAudioComponent>(TEXT("PursuitScore"));
+	Score->SetupAttachment(GetRootComponent());
+	Score->bAutoActivate = false;
+	Score->bAllowSpatialization = false;
 }
 
 void AWolfTrailGameMode::BeginPlay()
@@ -56,6 +76,7 @@ void AWolfTrailGameMode::BeginPlay()
 	Super::BeginPlay();
 	if (WolfHowls) HowlLoop = UGameplayStatics::SpawnSound2D(this,WolfHowls,WolfHowlVolume);
 	if (ForestWind) WindLoop = UGameplayStatics::SpawnSound2D(this,ForestWind,ForestWindVolume);
+	if (PursuitMusic) UGameplayStatics::PrimeSound(PursuitMusic);
 	TActorIterator<AWolfTrailRoute> Routes(GetWorld());
 	if (Routes) Route = *Routes;
 	TArray<AActor*> Lights;
@@ -63,9 +84,11 @@ void AWolfTrailGameMode::BeginPlay()
 	if (!Lights.IsEmpty()) FireplaceLight = Cast<APointLight>(Lights[0]);
 	UGameplayStatics::GetAllActorsWithTag(this,TEXT("M5WindowLight"),Lights);
 	if (!Lights.IsEmpty()) WindowLight = Cast<APointLight>(Lights[0]);
+	HuntingPack->SpawnMembers();
 	Cottage = GetWorld()->SpawnActor<AWolfCottageSet>();
 	Hermit = GetWorld()->SpawnActor<ACottageHermit>();
 	Crossing = GetWorld()->SpawnActor<AFirstLegCrossing>();
+	Storm = GetWorld()->SpawnActor<AStormfallSet>(StormfallLayout::Mouth, StormfallLayout::Facing);
 #if !UE_BUILD_SHIPPING
 	bFirstLegTest = FParse::Param(FCommandLine::Get(),TEXT("FirstLegTest"));
 	bCottageTest = FParse::Param(FCommandLine::Get(),TEXT("M3SelfTest"));
@@ -118,7 +141,7 @@ void AWolfTrailGameMode::BeginOpening(APawn& Pawn)
 		Max->StopJumping();
 		Max->GetCharacterMovement()->StopMovementImmediately();
 	}
-	OpeningCamera->Start(*Route->Spline,Pawn,StartDistance);
+	OpeningCamera->Start(*Route->Spline,Pawn,*HuntingPack,StartDistance);
 	PC->SetViewTarget(OpeningCamera);
 }
 
@@ -133,12 +156,25 @@ void AWolfTrailGameMode::FinishOpening()
 	}
 	OpeningCamera->Destroy();
 	OpeningCamera = nullptr;
+	StartPursuitMusic();
 	UE_LOG(LogTemp,Display,TEXT("TRAIL OPENING complete: third-person controls restored, %.2fs pursuit lead"),IdleCaptureSeconds);
+}
+
+void AWolfTrailGameMode::StartPursuitMusic()
+{
+	if (!PursuitMusic || Checkpoint >= 6 || Score->IsPlaying()) return;
+	Score->SetSound(PursuitMusic);
+	Score->SetVolumeMultiplier(MusicVolume);
+	Score->FadeIn(MusicFadeInSeconds, Checkpoint == 5 ? .72f : 1.f);
 }
 
 bool AWolfTrailGameMode::IsTraversalLocked() const
 {
 	return IsOpeningCinematicPlaying() || bHermitReacting || DigElapsed >= 0 || (Crossing && Crossing->IsTraversalLocked());
+}
+bool AWolfTrailGameMode::IsWatchingCreekPack() const
+{
+	return Crossing && Crossing->IsWatchingCreekPack();
 }
 void AWolfTrailGameMode::StartPlay()
 {
@@ -151,7 +187,7 @@ void AWolfTrailGameMode::StartPlay()
 void AWolfTrailGameMode::InitializeTrail()
 {
 	APawn* Pawn = UGameplayStatics::GetPlayerPawn(this,0);
-	if (!Pawn || !Pawn->IsPlayerControlled() || !Cottage || !Hermit || !Crossing) return;
+	if (!Pawn || !Pawn->IsPlayerControlled() || !Cottage || !Hermit || !Crossing || !Storm) return;
 	CheckpointTransform = Pawn->GetActorTransform();
 	StartDistance = RouteDistance(Pawn->GetActorLocation());
 	RestoreWorld(0);
@@ -159,7 +195,10 @@ void AWolfTrailGameMode::InitializeTrail()
 	UWolfTrailSave::Resume(*this);
 	if (Checkpoint == 0) BeginOpening(*Pawn);
 	if (!OpeningCamera)
+	{
+		StartPursuitMusic();
 		UE_LOG(LogTemp,Display,TEXT("FIRST LEG start: controls ready, %.1fs opening lead"),IdleCaptureSeconds);
+	}
 }
 
 void AWolfTrailGameMode::Tick(float Dt)
@@ -185,17 +224,16 @@ void AWolfTrailGameMode::Tick(float Dt)
 	const float Flicker = .9f + .06f*FMath::Sin(T*9) + .04f*FMath::Sin(T*15);
 	if (FireplaceLight.IsValid()) FireplaceLight->PointLightComponent->SetIntensity(38.f*Flicker);
 	if (WindowLight.IsValid()) WindowLight->PointLightComponent->SetIntensity(16.f*Flicker);
-	if (bLegComplete)
+	if (Checkpoint >= 5)
 	{
-		if (Pawn->GetActorLocation().Z < -320.f) RetryCheckpoint();
+		UpdateStormfall(Dt, *Pawn);
+		if (NoticeRemaining > 0 && !IsDead()) ThreatCue = Notice;
 		return;
 	}
 	UpdateCottage(Dt,*Pawn);
 	if (IsDead()) return;
 	UpdatePrompt(*Pawn);
-	if (Crossing->TickEncounter(*this,*Pawn,Dt))
-		Cottage->HidePack();
-	else
+	if (!Crossing->TickEncounter(*this,*Pawn,Dt))
 		UpdatePressure(Dt,*Pawn);
 	if (NoticeRemaining > 0 && !IsDead()) ThreatCue = Notice;
 #if !UE_BUILD_SHIPPING
@@ -213,9 +251,20 @@ void AWolfTrailGameMode::UpdateCottage(float Dt,APawn& Pawn)
 	}
 	if (DigElapsed >= 0)
 	{
+		const float PreviousCycle = MaxDigStroke::Cycle(DigElapsed / DigSeconds);
+		DigElapsed += Dt;
+		const float Cycle = MaxDigStroke::Cycle(DigElapsed / DigSeconds);
+		if (FMath::FloorToInt(Cycle-MaxDigStroke::Plant) > FMath::FloorToInt(PreviousCycle-MaxDigStroke::Plant))
+			Cottage->Impact(DigStanceEnd + DigFacing.Vector()*54.f,.41f + .04f*FMath::FloorToInt(Cycle),.88f);
+		const float Settle = FMath::SmoothStep(0.f,.085f,DigElapsed/DigSeconds);
+		if (DigElapsed-Dt < .085f*DigSeconds)
+		{
+			Pawn.SetActorLocation(FMath::Lerp(DigStanceStart,DigStanceEnd,double(Settle)),true);
+			Pawn.SetActorRotation(FQuat::Slerp(DigStartFacing.Quaternion(), DigFacing.Quaternion(), Settle));
+		}
 		if (!Near(P,Cottage->PitSurface(),235) || Inventory.Equipped != TEXT("Shovel"))
 			DigElapsed = -1;
-		else if ((DigElapsed += Dt) >= DigSeconds)
+		else if (DigElapsed >= DigSeconds)
 		{
 			DigElapsed = -1;
 			bPitDug = true;
@@ -293,7 +342,7 @@ void AWolfTrailGameMode::UpdateCottage(float Dt,APawn& Pawn)
 			}
 		}
 	}
-	Cottage->Animate(GetWorld()->GetTimeSeconds(),DigElapsed,DoorRemaining/DoorEnduranceSeconds,bSheltered && !bDoorOpen);
+	Cottage->Animate(GetWorld()->GetTimeSeconds(),DigElapsed/DigSeconds,DoorRemaining/DoorEnduranceSeconds,bSheltered && !bDoorOpen);
 }
 
 void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
@@ -305,14 +354,13 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 		OpeningSeconds += Dt;
 		WolfDistance = FMath::Max(WolfDistance + WolfSpeed * Dt, Distance - WolfSpeed*IdleCaptureSeconds);
 		const float Seconds = (Distance-WolfDistance)/WolfSpeed;
-		Cottage->TrailPack(Route.Get(),WolfDistance,P);
+		Cottage->TrailPack(Route.Get(),FMath::Clamp(Distance-WolfDistance,0.f,700.f));
 		ThreatCue = Seconds < 1.4f ? TEXT("Claws scrape the trail behind you.") : Seconds < 3.f ? TEXT("The brush snaps. Closer.") : TEXT("");
 		if (Seconds <= 0) { PresentWolfCapture(); return; }
 		if (Distance >= RouteDistance(CottageApproach) - 360 && (Near(P,CottageApproach,780) || Near(P,CabinDoorLocation,850)))
 		{
 			if (CommitCheckpoint(1,CottageApproach,FRotator(0,32,0)))
 			{
-				ExteriorRemaining = ExteriorSeconds;
 				Say(TEXT("The pack scrambles around the fallen timber."),3);
 				Cottage->Impact(CottageApproach-FVector(450,0,0),.6f,.8f);
 			}
@@ -327,7 +375,7 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 	{
 		if (!bBurning)
 		{
-			Cottage->DoorPack(CabinDoorLocation,false);
+			Cottage->DoorPack(CabinDoorLocation,false,true,bDoorBreached);
 			UE_LOG(LogTemp,Display,TEXT("Doorway intercepted at %s, equipped %s, flame out"),*P.ToCompactString(),*Inventory.Equipped.ToString());
 			PresentWolfCapture();
 			return;
@@ -341,7 +389,7 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 	{
 		if (!bHermitReacting) ExteriorRemaining -= Dt;
 		if (bDoorwayGuarded) Cottage->DoorPack(CabinDoorLocation,false);
-		else Cottage->YardPack(Route.Get(),P,ExteriorRemaining/ExteriorSeconds,false);
+		else Cottage->YardPack(Route.Get(),ExteriorRemaining/ExteriorSeconds,false);
 		if (ExteriorRemaining < 6) ThreatCue = TEXT("A wolf breaks cover and runs at you.");
 		else if (ExteriorRemaining < 16) ThreatCue = TEXT("Growls sound just beyond the yard.");
 		else if (Near(P,FVector(2390,220,0),330) && !bHermitReacting && !bHermitTrapped)
@@ -384,8 +432,8 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 		FleeRemaining = FMath::Min(14.f,FleeRemaining - Dt + Extension/430.f);
 	if (bDoorBreached && IsInside(P)) FleeRemaining = FMath::Min(FleeRemaining, 2.f) - (bBurning ? Dt : 0.f);
 	const float Seconds = bBurning ? FireRemaining : FleeRemaining;
-	if (bDoorwayGuarded) Cottage->DoorPack(CabinDoorLocation,bBurning);
-	else Cottage->YardPack(Route.Get(),P,FMath::Clamp(Seconds/(bBurning ? FireDeterrenceSeconds : 14.f),0.f,1.f),bBurning);
+	if (bDoorwayGuarded) Cottage->DoorPack(CabinDoorLocation,bBurning,false,bDoorBreached);
+	else Cottage->YardPack(Route.Get(),FMath::Clamp(Seconds/(bBurning ? FireDeterrenceSeconds : 14.f),0.f,1.f),bBurning);
 	if (bBurning)
 		ThreatCue = Seconds < 5 ? TEXT("The lead wolf lunges toward the embers.") :
 			Seconds < 14 ? TEXT("A wolf feints at the burning end.") : TEXT("The wolves recoil from the flame.");
@@ -399,23 +447,24 @@ void AWolfTrailGameMode::UpdatePressure(float Dt,APawn& Pawn)
 AWolfTrailGameMode::ETarget AWolfTrailGameMode::Target(const APawn& Pawn,bool bItem) const
 {
 	const FVector P = Pawn.GetActorLocation();
-	if (bHermitReacting || DigElapsed >= 0 || IsDead() || bLegComplete) return ETarget::None;
+	if (bHermitReacting || DigElapsed >= 0 || IsDead()) return ETarget::None;
 	if (bItem && bSheltered && IsInside(P) && Near(P,HearthPosition,158) && Inventory.Has(TEXT("Firebrand")) && !Inventory.bBurning) return ETarget::Brand;
 	if (bItem)
 	{
 		const FVector ToPatch = (Cottage->PitSurface()-P).GetSafeNormal2D();
 		const bool bFacing = FVector::DotProduct(Pawn.GetActorForwardVector(),ToPatch) > -.15f;
-		return !bPitDug && P.X < CabinDoorLocation.X && Inventory.Has(TEXT("Shovel")) && Near(P,Cottage->PitSurface(),215) && bFacing ? ETarget::Earth : ETarget::None;
+		return !bPitDug && P.X < CabinDoorLocation.X && Near(P,Cottage->PitSurface(),215) && bFacing ? ETarget::Earth : ETarget::None;
 	}
 	if (!Inventory.Has(TEXT("Shovel")) && Near(P,ShovelLocation,150) && !IsInside(P)) return ETarget::Shovel;
 	if (IsInside(P) && bSheltered)
 	{
-		if (!Inventory.Has(TEXT("Gold")) && !Inventory.Has(TEXT("Rope")) && Checkpoint < 4 && Near(P,TablePosition,165)) return ETarget::Supplies;
+		if (Checkpoint < 3 && !Inventory.Has(TEXT("Gold")) && Near(P,Cottage->GetGoldLocation(),142)) return ETarget::Gold;
+		if (Checkpoint < 3 && !Inventory.Has(TEXT("Rope")) && Near(P,Cottage->GetRopeLocation(),142)) return ETarget::Rope;
 		if ((!Inventory.Has(TEXT("Firebrand")) || !Inventory.bBurning) && Near(P,HearthPosition,158)) return ETarget::Brand;
 	}
 	// A knock can be made from solid ground beside either jamb after digging.
 	if (!bHermitTrapped && P.X < CabinDoorLocation.X-15 && Near(P,CabinDoorLocation,245))
-		return ETarget::Knock;
+		return Inventory.Equipped.IsNone() ? ETarget::Knock : ETarget::HandsFull;
 	if (bHermitTrapped && IsInside(P) && Near(P,CabinDoorLocation,200))
 	{
 		if (!bSheltered) return ETarget::Bar;
@@ -432,15 +481,17 @@ void AWolfTrailGameMode::UpdatePrompt(const APawn& Pawn)
 	{
 	case ETarget::Shovel: Hints.Add(TEXT("E  Take shovel")); break;
 	case ETarget::Knock: Hints.Add(TEXT("E  Knock")); break;
+	case ETarget::HandsFull: Hints.Add(TEXT("Your hands are full.")); break;
 	case ETarget::Bar: Hints.Add(TEXT("E  Close and bar door")); break;
 	case ETarget::Open: Hints.Add(TEXT("E  Lift bar and open")); break;
 	case ETarget::Close: Hints.Add(TEXT("E  Close and bar door")); break;
-	case ETarget::Supplies: Hints.Add(TEXT("E  Take supplies")); break;
+	case ETarget::Rope: Hints.Add(TEXT("E  Take rope from the wall")); break;
+	case ETarget::Gold: Hints.Add(TEXT("E  Take sack of gold from the table")); break;
 	case ETarget::Brand: Hints.Add(Inventory.Has(TEXT("Firebrand")) ? TEXT("E  Relight and equip firebrand") : TEXT("E  Take and equip firebrand")); break;
 	default: break;
 	}
 	if (Target(Pawn,true) == ETarget::Earth)
-		Hints.Add(Inventory.Equipped==TEXT("Shovel") ? TEXT("F  Dig loose earth") : TEXT("Tab  Equip shovel"));
+		Hints.Add(Inventory.Equipped==TEXT("Shovel") ? TEXT("F  Dig loose earth") : TEXT("Loose earth shows between the rotten planks."));
 	InteractionPrompt = FString::Join(Hints,TEXT("     "));
 	if (Checkpoint==0 && OpeningSeconds < 3) InteractionPrompt = TEXT("W A S D  Move      Shift  Sprint");
 }
@@ -449,20 +500,41 @@ void AWolfTrailGameMode::Interact() { Act(false); }
 void AWolfTrailGameMode::UseEquipped() { Act(true); }
 void AWolfTrailGameMode::Act(bool bItem)
 {
-	if (IsOpeningCinematicPlaying() || IsDead() || bLegComplete || GetWorld()->IsPaused()) return;
+	if (IsOpeningCinematicPlaying() || IsDead() || GetWorld()->IsPaused()) return;
 	APawn* Pawn = UGameplayStatics::GetPlayerPawn(this,0);
-	if (!Pawn || Crossing->TryAction(*this,*Pawn,bItem)) return;
+	if (!Pawn) return;
+	if (Checkpoint >= 5)
+	{
+		StormAction(*Pawn,bItem);
+		return;
+	}
+	if (Crossing->TryAction(*this,*Pawn,bItem)) return;
 	switch (Target(*Pawn,bItem))
 	{
 	case ETarget::Shovel:
 		Inventory.Add(TEXT("Shovel"));
 		Cottage->SetShovel(false);
-		Say(TEXT("Shovel taken. Open your pack to equip it."));
+		Say(TEXT("Shovel taken."));
 		break;
 	case ETarget::Earth:
-		if (Inventory.Equipped != TEXT("Shovel")) { Say(TEXT("Equip the shovel to clear the loose earth.")); break; }
-		DigElapsed = 0;
-		Cottage->Impact(Cottage->PitSurface(),.55f,1.1f);
+		if (Inventory.Equipped != TEXT("Shovel")) break;
+		{
+			DigStanceStart = Pawn->GetActorLocation();
+			// Take a short step up to the closest lip when the action was begun at full reach.
+			const FVector Edge = Cottage->GetPitBounds().GetClosestPointTo(DigStanceStart);
+			const FVector In = (Edge-DigStanceStart).GetSafeNormal2D();
+			DigStanceEnd = DigStanceStart + In*FMath::Max(0.,FVector::Dist2D(DigStanceStart,Edge)-35.);
+			DigStartFacing = Pawn->GetActorRotation();
+			const FVector ToPit = (Cottage->PitSurface()-DigStanceEnd).GetSafeNormal2D();
+			DigFacing = ToPit.IsNearlyZero() ? DigStartFacing : ToPit.Rotation();
+			Pawn->ConsumeMovementInputVector();
+			if (auto* Max = Cast<ACharacter>(Pawn))
+			{
+				Max->StopJumping();
+				Max->GetCharacterMovement()->StopMovementImmediately();
+			}
+			DigElapsed = 0;
+		}
 		break;
 	case ETarget::Knock:
 		Cottage->HideWindowBarrel();
@@ -485,19 +557,20 @@ void AWolfTrailGameMode::Act(bool bItem)
 		Say(TEXT("The bar drops into its brackets."));
 		break;
 	case ETarget::Open:
-		if (!Inventory.Has(TEXT("Rope")) && !bWarnedTable)
-		{
-			bWarnedTable = true;
-			Say(TEXT("The coil and the coin sack are still on the table."),4);
-		}
-		else NoticeRemaining = 0; // Let the guard or flame reaction replace an old pickup message.
+		NoticeRemaining = 0; // Let the guard or flame reaction replace an old pickup message.
 		SetDoorOpen(true);
 		break;
 	case ETarget::Close: SetDoorOpen(false); break;
-	case ETarget::Supplies:
-		Inventory.Add(TEXT("Rope")); Inventory.Add(TEXT("Gold"));
-		Cottage->SetSupplies(false);
-		Say(TEXT("Rope taken. Sack of gold taken.")); break;
+	case ETarget::Rope:
+		Inventory.Add(TEXT("Rope"));
+		Cottage->SetRope(false);
+		Say(TEXT("Rope taken."));
+		break;
+	case ETarget::Gold:
+		Inventory.Add(TEXT("Gold"));
+		Cottage->SetGold(false);
+		Say(TEXT("Sack of gold taken."));
+		break;
 	case ETarget::Brand:
 		Inventory.Ignite(); Cottage->SetBrand(false);
 		Say(TEXT("The dry end fits your hand. The far end burns.")); break;
@@ -522,9 +595,14 @@ void AWolfTrailGameMode::Say(const FString& Text,float Seconds)
 void AWolfTrailGameMode::PresentWolfCapture() { Die(TEXT("Wolves")); }
 void AWolfTrailGameMode::Die(const FString& Cause)
 {
-	if (IsOpeningCinematicPlaying() || IsDead() || bLegComplete) return;
+	if (IsOpeningCinematicPlaying() || IsDead()) return;
+	if (Cause == TEXT("Wolves"))
+	{
+		const APawn* Max=UGameplayStatics::GetPlayerPawn(this,0);
+		if (!Max || !HuntingPack->ClaimCapture(*Max)) return;
+	}
 	DeathCause = Cause;
-	if (Crossing) Crossing->StopSpeech();
+	if (Crossing) Crossing->InterruptEncounter();
 	if (Hermit) Hermit->StopSpeech();
 	bWolfCaptured = Cause == TEXT("Wolves");
 	bShotByHermit = Cause == TEXT("Hermit");
@@ -537,9 +615,19 @@ void AWolfTrailGameMode::Die(const FString& Cause)
 		{
 			Character->GetCharacterMovement()->StopMovementImmediately();
 			Character->GetCharacterMovement()->DisableMovement();
+			if (Cause == TEXT("Current"))
+			{
+				RiverShot = GetWorld()->SpawnActor<ARiverDrowningShot>();
+				if (RiverShot)
+				{
+					bRiverDrowning = true;
+					RiverShot->Start(*this,*Character);
+					return;
+				}
+			}
 			if (bWolfCaptured)
 			{
-				UWolfMeshComponent* Lead = Checkpoint >= 3 && Crossing ? Crossing->GetLeadWolf() : (Cottage ? Cottage->GetLeadWolf() : nullptr);
+				UWolfMeshComponent* Lead = HuntingPack->GetAttacker();
 				if (Lead)
 				{
 					CaptureCamera = GetWorld()->SpawnActor<AWolfCaptureCamera>();
@@ -557,43 +645,69 @@ void AWolfTrailGameMode::Die(const FString& Cause)
 }
 void AWolfTrailGameMode::ShowDeathCard()
 {
+	bRiverDrowning = false;
 	bWolfPouncing = false;
+	if (Score->IsPlaying()) Score->AdjustVolume(.45f,.45f);
 	WolfCaptureTime = GetWorld()->GetTimeSeconds();
-	if (bWolfCaptured) UE_LOG(LogTemp,Display,TEXT("WOLF POUNCE death card at CP%d"),Checkpoint);
+	if (bWolfCaptured)
+	{
+		WolfCardSnarl->Play();
+		UE_LOG(LogTemp,Display,TEXT("WOLF POUNCE death card at CP%d; card snarl %s"),Checkpoint,*GetNameSafe(WolfCardSnarl->GetSound()));
+	}
 	GetWorldTimerManager().SetTimer(RetryTimer,this,&AWolfTrailGameMode::RetryCheckpoint,DeathDisplaySeconds,false);
 }
 bool AWolfTrailGameMode::CommitCheckpoint(int32 Id,FVector Location,FRotator Facing)
 {
-	if (IsOpeningCinematicPlaying() || Id!=Checkpoint+1 || Id>5 || IsDead() || !GetWorld()->GetFirstPlayerController()) return false;
+	if (IsOpeningCinematicPlaying() || Id!=Checkpoint+1 || Id>6 || IsDead() || !GetWorld()->GetFirstPlayerController()) return false;
 	if (Id==2 && (!bHermitTrapped || !bSheltered)) return false;
 	if (Id==3 && (!Inventory.Has(TEXT("Gold")) || !Inventory.Has(TEXT("Rope")))) return false;
 	if (Id==4 && (!Inventory.Has(TEXT("Gold")) || Inventory.Has(TEXT("Rope")))) return false;
+	if (Id==5 && (!Crossing || !Crossing->HasSurvivedRobbery() || Inventory.Has(TEXT("Gold")))) return false;
+	if (Id==6 && (!bThroughRoots || !AreCaveRootsClear())) return false;
 	Checkpoint=Id;
 	CheckpointTransform=FTransform(Facing,Location);
 	CheckpointItems=Inventory;
+	if (Id==5) CheckpointPouchSite=Crossing->GetGoldLanding();
 	UWolfTrailSave::Write(*this);
-	bLegComplete = Id == 5;
+	if (Id == 5 && Score->IsPlaying()) Score->AdjustVolume(2.4f,.72f);
+	if (Id==6 && Score->IsPlaying()) Score->FadeOut(2.f,0.f);
 	UE_LOG(LogTemp,Display,TEXT("FIRST LEG CP%d stored at %s, items=%d"),Id,*Location.ToCompactString(),Inventory.Items.Num());
 	return true;
 }
 
 void AWolfTrailGameMode::RestoreWorld(int32 Id)
 {
+	WolfCardSnarl->Stop();
 	Inventory = CheckpointItems;
 	bWolfPouncing = false;
 	DeathCause.Reset(); InteractionPrompt.Reset(); ThreatCue.Reset(); NoticeRemaining=0;
 	bWolfCaptured=false; bShotByHermit=false; bPitDug=Id>=2; bHermitTrapped=Id>=2; bSheltered=Id>=2;
-	bLegComplete=Id==5; bHermitReacting=false; HermitElapsed=-1; DigElapsed=-1; bWarnedTable=false; bDoorBreached=false;
+	bRiverDrowning=false; bHermitReacting=false; HermitElapsed=-1; DigElapsed=-1; bDoorBreached=false;
 	WolfDistance=StartDistance-WolfSpeed*IdleCaptureSeconds; OpeningSeconds=0; ExteriorRemaining=ExteriorSeconds;
 	DoorRemaining=DoorEnduranceSeconds; FireRemaining=FireDeterrenceSeconds; FleeRemaining=14; DoorImpactIn=0;
 	BestDepartureDistance=RouteDistance(CheckpointTransform.GetLocation());
 	bDoorwayGuarded=Id==2;
+	HuntingPack->ResetAttempt();
+	if (Id==0 && Route.IsValid())
+	{
+		const float Distance=FMath::Max(0.f,WolfDistance-178.f);
+		HuntingPack->PlaceAtStart(Route->Spline->GetLocationAtDistanceAlongSpline(Distance,ESplineCoordinateSpace::World),
+			Route->Spline->GetDirectionAtDistanceAlongSpline(Distance,ESplineCoordinateSpace::World));
+	}
+	else if (Id==1) HuntingPack->PlaceAtStart(CottageApproach-FVector(590,95,105),FVector::ForwardVector);
+	else if (Id==2) HuntingPack->PlaceAtStart(CabinDoorLocation-FVector(239,0,100),FVector::ForwardVector);
+	else if (Id==3) HuntingPack->PlaceAtStart(FVector(8460,-1190,50),FVector::ForwardVector);
+	else if (Id==5) HuntingPack->PlaceAtStart(FVector(16390,700,82),FVector(1,.25,0));
+	else if (Id>=6) HuntingPack->PlaceAtStart(FVector(15450,570,55),FVector(1,.25,0));
 	Cottage->RestoreProps(bSheltered);
 	Hermit->RestoreEncounter(bHermitTrapped,CabinDoorLocation,Cottage->PitSurface(),Cottage->GetPitBounds().GetExtent().Y);
 	Cottage->SetShovel(!Inventory.Has(TEXT("Shovel"))); Cottage->SetPit(bPitDug);
-	Cottage->SetSupplies(Id<3 && !Inventory.Has(TEXT("Rope"))); Cottage->SetBrand(!Inventory.Has(TEXT("Firebrand")));
+	Cottage->SetGold(Id<3 && !Inventory.Has(TEXT("Gold")));
+	Cottage->SetRope(Id<3 && !Inventory.Has(TEXT("Rope")));
+	Cottage->SetBrand(!Inventory.Has(TEXT("Firebrand")));
 	SetDoorOpen(Id>=3);
-	Crossing->Restore(Id);
+	Crossing->Restore(Id,CheckpointPouchSite);
+	ResetStormfall(Id);
 }
 void AWolfTrailGameMode::RetryCheckpoint()
 {
@@ -606,6 +720,12 @@ void AWolfTrailGameMode::RetryCheckpoint()
 	PC->ResetIgnoreMoveInput(); PC->ResetIgnoreLookInput();
 	RestartPlayerAtTransform(PC,CheckpointTransform);
 	PC->SetControlRotation(CheckpointTransform.Rotator());
+	if (RiverShot)
+	{
+		PC->SetViewTarget(PC->GetPawn());
+		RiverShot->Destroy();
+		RiverShot = nullptr;
+	}
 	if (CaptureCamera)
 	{
 		PC->SetViewTarget(PC->GetPawn());
@@ -613,5 +733,6 @@ void AWolfTrailGameMode::RetryCheckpoint()
 		CaptureCamera = nullptr;
 	}
 	RestoreWorld(Checkpoint);
+	if (Checkpoint<6 && Score->IsPlaying()) Score->AdjustVolume(.8f,Checkpoint == 5 ? .72f : 1.f);
 	UE_LOG(LogTemp,Display,TEXT("FIRST LEG restored CP%d"),Checkpoint);
 }

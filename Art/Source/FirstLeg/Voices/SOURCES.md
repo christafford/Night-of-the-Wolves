@@ -1,8 +1,8 @@
 # First-leg dialogue
 
-The six lines use the game's original English script. Yosemite Sam's explosive changes of pitch informed the hermit's warning, outburst and plea from the pit. Tuco in *The Good, the Bad and the Ugly* informed the bandit's switch from an abrupt command to feigned friendliness at the sight of gold. Both performances were synthesized locally from written direction. No film or cartoon recording was used. [Qwen3-TTS VoiceDesign model card](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign)
+The six lines use the game's original English script. The hermit gives a low, gravelly warning through the timber, projects his threat on the porch and breaks into a frightened plea in the pit. The bandit speaks measured English with a northern Mexican accent. His low, smoother voice leaves a beat between commands as he sizes up Max and sees the gold. Both performances were synthesized locally from original written direction. [Qwen3-TTS VoiceDesign model card](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign)
 
-The approved dry recordings are in [Performances](Performances). Each contains all three lines for one speaker. The [authoring script](../../../../Scripts/render_first_leg_dialogue.py) keeps the direction, seeds, edit points and mastering filters together. The cabin window softens the upper frequencies of the warning. The pit adds a short reflection. The roadside lines stay dry so their position follows the bandit in the game.
+Each speaker recorded all three lines in a single take. The authoring script stores the seeds, direction, edit points and mastering filters. The hermit's vowels have gentle saturation and pitch-preserving time stretch. The cabin window softens the warning, and the pit adds a short reflection. The roadside lines retain the pauses between the bandit's commands. [Dry performances](Performances) · [Authoring script](../../../../Scripts/render_first_leg_dialogue.py)
 
 ## Remaster and import
 
@@ -31,6 +31,8 @@ The authoring environment on this workstation is `~/.cache/night-of-the-wolves/q
 
 ```sh
 source "$HOME/.cache/night-of-the-wolves/qwen-tts/bin/activate"
+export PATH="$HOME/.cache/night-of-the-wolves/sox/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/.cache/night-of-the-wolves/sox/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 python Scripts/render_first_leg_dialogue.py --audition /tmp/wolves-audition --actor Hermit --seed 204
 ```
 

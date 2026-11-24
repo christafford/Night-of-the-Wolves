@@ -43,7 +43,7 @@ struct FWolfInventory
 
 	FString DisplayName(FName Item) const
 	{
-		if (Item.IsNone()) return TEXT("Empty hands");
+		if (Item.IsNone()) return TEXT("Bare hands");
 		if (Item == TEXT("Gold")) return TEXT("Sack of gold");
 		if (Item == TEXT("Firebrand")) return bBurning ? TEXT("Burning firebrand") : TEXT("Extinguished firebrand");
 		return Item.ToString();

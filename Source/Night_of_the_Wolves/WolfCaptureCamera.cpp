@@ -69,33 +69,13 @@ void AWolfCaptureCamera::Start(AWolfTrailGameMode& Game, ACharacter& Player, UWo
 	Mode = &Game;
 	Max = &Player;
 	Wolf = &Leader;
-	Pack = Leader.GetOwner()->FindComponentByClass<UWolfPackComponent>();
+	Pack = Game.GetHuntingPack();
 	Wolf->SetVisibility(true);
-	StartFeet = Wolf->GetComponentLocation();
+	LaunchFeet = Wolf->GetComponentLocation();
 	const FVector Chest = TargetChest();
-	const bool bAtHollow = Game.bDoorwayGuarded && Game.bPitDug && StartFeet.X < Game.CabinDoorLocation.X;
-	RunStart = StartFeet;
-	if (bAtHollow && Player.GetActorLocation().X > Game.CabinDoorLocation.X + 90.)
-	{
-		// On a breach the prey may be deep inside. Clear the hollow along the
-		// doorway centreline before turning to chase him across the room.
-		RunStart = FVector(Game.CabinDoorLocation.X + 75.,Game.CabinDoorLocation.Y,StartFeet.Z);
-		PitBound = FVector::Dist2D(StartFeet,RunStart) / 680.f;
-	}
-	AttackDirection = (Chest - RunStart).GetSafeNormal2D();
-	if (AttackDirection.IsNearlyZero())
-		AttackDirection = Wolf->GetForwardVector().GetSafeNormal2D();
-
-	// A breached door can catch Max on the far side of the room. Run in from
-	// the real pack position before gathering for a believable jumping distance.
-	const float Gap = FVector::Dist2D(Chest, StartFeet);
-	const float Remaining = FVector::Dist2D(Chest,RunStart);
-	// A departing Max is already within leaping distance from the yard lip.
-	const float Approach = bAtHollow && PitBound == 0 ? 0.f : FMath::Max(0.f,Remaining - 250.f);
-	RunIn = Approach / 750.f;
-	LaunchFeet = RunStart + AttackDirection * Approach;
-	if (Approach > 0)
-		LaunchFeet.Z = FMath::Lerp(RunStart.Z,Max->GetActorLocation().Z - Max->GetSimpleCollisionHalfHeight(),Approach / Remaining);
+	AttackDirection = (Chest - LaunchFeet).GetSafeNormal2D();
+	if (AttackDirection.IsNearlyZero()) AttackDirection = Wolf->GetForwardVector();
+	const float Gap = FVector::Dist2D(Chest,LaunchFeet);
 	FramingCentre = FMath::Lerp(Chest, LaunchFeet + FVector(0,0,83), .40);
 
 	if (APlayerController* PC = Cast<APlayerController>(Player.GetController()))
@@ -108,11 +88,11 @@ void AWolfCaptureCamera::Start(AWolfTrailGameMode& Game, ACharacter& Player, UWo
 		MoonFill->SetWorldLocation(FramingCentre + NearSide * 140. + FVector(0,0,140));
 		PC->SetViewTargetWithBlend(this, .16f, VTBlend_Cubic, 0, true);
 	}
-	if (Snarl) UGameplayStatics::PlaySoundAtLocation(this, Snarl, StartFeet, .80f, 1.08f);
+	if (Snarl) UGameplayStatics::PlaySoundAtLocation(this, Snarl, LaunchFeet, .80f, 1.08f);
 #if !UE_BUILD_SHIPPING
 	bPhotograph = FParse::Param(FCommandLine::Get(),TEXT("WolfCapturePhotos"));
 #endif
-	UE_LOG(LogTemp, Display, TEXT("WOLF POUNCE started at CP%d from live lead %s, %.0fcm to Max"), Mode->Checkpoint, *Wolf->GetName(), Gap);
+	UE_LOG(LogTemp, Display, TEXT("WOLF POUNCE started at CP%d from %s, %.0fcm to Max"), Mode->Checkpoint, Pack->GetTactics().IdentityName(Wolf->GetIdentity()), Gap);
 }
 
 void AWolfCaptureCamera::FrameAttack(APlayerController& Controller)
@@ -196,27 +176,7 @@ void AWolfCaptureCamera::Tick(float Dt)
 	Elapsed += Dt;
 	if (Pack) Pack->CoverPounce(Dt, Max->GetActorLocation() - FVector(0,0,Max->GetSimpleCollisionHalfHeight()));
 	MoonFill->SetIntensity(1.2f * FMath::Min(1.f, Elapsed / .25f));
-	if (Elapsed < PitBound)
-	{
-		const float T = Elapsed / PitBound;
-		const float Arc = 4.f * T * (1.f - T);
-		FVector Next = FMath::Lerp(StartFeet,RunStart,T);
-		Next.Z += 67.f * Arc;
-		Wolf->SetWorldLocationAndRotation(Next,(RunStart-StartFeet).Rotation());
-		Wolf->SetPouncePose(Arc);
-		return;
-	}
-	const float ChaseTime = Elapsed - PitBound;
-	if (ChaseTime < RunIn)
-	{
-		const float T = ChaseTime / RunIn;
-		const FVector Next = FMath::Lerp(RunStart, LaunchFeet, T);
-		const float Travel = FVector::Dist2D(Wolf->GetComponentLocation(),Next);
-		Wolf->SetWorldLocationAndRotation(Next, AttackDirection.Rotation());
-		Wolf->AdvanceGait(Dt,Travel,false,1.f);
-		return;
-	}
-	const float LeapTime = ChaseTime - RunIn - GatherTime;
+	const float LeapTime = Elapsed - GatherTime;
 	const float Flight = FMath::Max(.15f, Mode->WolfFlightSeconds);
 	const float Hold = FMath::Max(.15f, Mode->WolfImpactSeconds);
 	const float T = FMath::Clamp(LeapTime / Flight, 0.f, 1.f);

@@ -1,6 +1,48 @@
 #include "WolfMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+struct FTimberWolfCoat
+{
+	FVector Build;
+	float Coat, Mask, Ruff;
+};
+
+// Stocky silver leader; dark heavy pursuer; narrow pale-mask flanker;
+// long-legged ash scout; lower, dark-ruffed tracker with a grizzled muzzle.
+const FTimberWolfCoat Coats[] = {
+	{{1.08, 1.09, 1.08}, 1.08f, 1.29f, 1.37f},
+	{{1.05, 1.12, 1.01}, .68f, .80f, .76f},
+	{{.98, .94, .99}, .80f, 1.42f, .98f},
+	{{1.01, .90, 1.05}, 1.26f, 1.06f, 1.16f},
+	{{.93, .97, .93}, .93f, 1.25f, .65f}
+};
+}
+
+void UWolfMeshComponent::SetIdentity(int32 Member)
+{
+	Identity = FMath::Clamp(Member,0,int32(UE_ARRAY_COUNT(Coats))-1);
+	const auto& Fur = Coats[Identity];
+	SetRelativeScale3D(Fur.Build);
+	auto Dye = [this](FName Slot, float Value)
+	{
+		const int32 I = GetMaterialIndex(Slot);
+		if (I != INDEX_NONE)
+			if (auto* Coat = CreateDynamicMaterialInstance(I)) Coat->SetScalarParameterValue(TEXT("CoatValue"),Value);
+	};
+	Dye(TEXT("TimberCoat"),Fur.Coat);
+	Dye(TEXT("TimberFace"),Fur.Mask);
+	Dye(TEXT("TimberRuff"),Fur.Ruff);
+}
+
+void UWolfMeshComponent::SetHuntGesture(float SignedSignal, float Investigate)
+{
+	SignalTarget = FMath::Clamp(SignedSignal,-1.f,1.f);
+	InvestigateTarget = FMath::Clamp(Investigate,0.f,1.f);
+}
 
 UWolfMeshComponent::UWolfMeshComponent()
 {
@@ -43,6 +85,7 @@ bool UWolfMeshComponent::PrepareRig()
 
 void UWolfMeshComponent::ResetGait(float StartingPhase)
 {
+	SignalTarget = InvestigateTarget = SignalPose = InvestigatePose = 0.f;
 	Phase = StartingPhase;
 	Clock = StartingPhase * 3.f;
 	Speed = 0.f;
@@ -100,7 +143,7 @@ void UWolfMeshComponent::FinishPose()
 	RefreshBoneTransforms();
 }
 
-void UWolfMeshComponent::AdvanceGait(float Dt, float Travel, bool bSwimming, float Threat)
+void UWolfMeshComponent::AdvanceGait(float Dt, float Travel, bool bSwimming, float Threat, float Peer)
 {
 	if (!PrepareRig()) return;
 	Clock += Dt;
@@ -113,16 +156,23 @@ void UWolfMeshComponent::AdvanceGait(float Dt, float Travel, bool bSwimming, flo
 	const float Hz = bSwimming ? 1.1f : FMath::Min(Speed*Contact/(2.f*Span), 4.4f);
 	Phase = FMath::Fmod(Phase + Dt*Hz, 1.f);
 	const float Beat = FMath::Cos(4*PI*(Phase-.20f));
-	const float Breath = FMath::Sin(Clock*2.5f);
+	const float Breath = FMath::Sin(Clock*(2.3f+Identity*.12f));
+	const float Dry = bSwimming ? 0.f : 1.f;
+	SignalPose = FMath::FInterpTo(SignalPose,SignalTarget*Dry,Dt,8.f);
+	InvestigatePose = FMath::FInterpTo(InvestigatePose,InvestigateTarget*Dry,Dt,4.f);
+	const float HeadTurn = SignalPose*33.f;
+	const float NoseDown = InvestigatePose*(Identity == 4 ? 29.f : 19.f);
+	const float ScentSweep = InvestigatePose*FMath::Sin(Clock*2.7f)*13.f;
+	const float Carry = Dry*(Identity==1 ? -5.f : Identity==3 ? 4.f : 0.f);
 	Posed = Rest;
 	Tilt(Chest, FRotator(-2.f*Activity*Beat - 3.f*Threat, 0, 0));
 	Posed[Chest].AddToTranslation(FVector(0,0, Activity*(.9f - 2.6f*Beat) + .5f*Breath - 3.f*Threat));
-	Tilt(Neck, FRotator(1.5f*Activity*Beat + 2.f*Threat + (bSwimming?11.f:0.f), 0, 0));
-	Tilt(Skull, FRotator(Breath*.8f + Activity*Beat, FMath::Sin(Clock*1.7f)*1.4f, 0));
+	Tilt(Neck, FRotator(1.5f*Activity*Beat + 2.f*Threat + (bSwimming?11.f:0.f) - 17.f*Peer + Carry - NoseDown + 6.f*FMath::Abs(SignalPose), .43f*HeadTurn+ScentSweep*.5f, 0));
+	Tilt(Skull, FRotator(Breath*.8f + Activity*Beat - 8.f*Peer - NoseDown*.4f, FMath::Sin(Clock*1.7f)*1.4f + .57f*HeadTurn + ScentSweep*.5f, -SignalPose*3.f));
 	Tilt(Jaw, FRotator(-2.f - 6.f*Threat - .9f*Breath, 0, 0));
-	Tilt(LeftEar, FRotator(-6.f*Threat, 3.f*FMath::Sin(Clock*3.1f), 0));
-	Tilt(RightEar, FRotator(-6.f*Threat, -2.f*FMath::Cos(Clock*2.8f), 0));
-	Tilt(Brush, FRotator(-8.f*Activity - 7.f*Threat, 6.f*FMath::Sin(Clock*2.8f), 0));
+	Tilt(LeftEar, FRotator(-6.f*Threat, 3.f*FMath::Sin(Clock*3.1f) + HeadTurn*.33f + InvestigatePose*6.f, 0));
+	Tilt(RightEar, FRotator(-6.f*Threat, -2.f*FMath::Cos(Clock*2.8f) + HeadTurn*.36f - InvestigatePose*4.f, 0));
+	Tilt(Brush, FRotator(-8.f*Activity - 7.f*Threat + 12.f*FMath::Abs(SignalPose) - NoseDown*.25f, 6.f*FMath::Sin(Clock*2.8f), 0));
 	Tilt(Tip, FRotator(2.f*Beat*Activity, 8.f*FMath::Sin(Clock*2.8f-.6f), 0));
 
 	for (const FLeg& Leg : Legs)
@@ -167,6 +217,51 @@ void UWolfMeshComponent::SetPouncePose(float Progress)
 		Foot.X += Leg.bFore ? FMath::Lerp(-4.f,42.f,Launch) - 5.f*Impact : FMath::Lerp(11.f,-24.f,Launch) + 16.f*Impact;
 		Foot.Z += Leg.bFore ? Launch*(38.f + (Leg.bSecondBeat?2.f:0.f)) : Launch*(15.f + 9.f*Impact);
 		Reach(Leg,Foot,Leg.bFore ? (18.f*Launch - 10.f*Impact) : -33.f*Launch);
+	}
+	FinishPose();
+}
+
+// Transfer weight onto the haunches without sliding the planted paws.
+void UWolfMeshComponent::SetFireRecoil(float Weight)
+{
+	if (!PrepareRig()) return;
+	Posed = Rest;
+	Posed[Chest].AddToTranslation(FVector(-9.f,0.f,-15.f)*Weight);
+	Tilt(Chest,FRotator(7.f*Weight,0,0));
+	Tilt(Neck,FRotator(18.f*Weight,0,0));
+	Tilt(Skull,FRotator(-8.f*Weight,0,0));
+	Tilt(LeftEar,FRotator(-39.f*Weight,12.f*Weight,0));
+	Tilt(RightEar,FRotator(-39.f*Weight,-12.f*Weight,0));
+	Tilt(Brush,FRotator(-40.f*Weight,0,0));
+	Tilt(Tip,FRotator(-21.f*Weight,0,0));
+	for (const FLeg& Leg : Legs)
+	{
+		const FVector Foot=Rest[Leg.Paw].GetLocation();
+		Reach(Leg,Foot,0);
+	}
+	FinishPose();
+}
+
+void UWolfMeshComponent::SetStrugglePose(float Weight, float Beat)
+{
+	if (!PrepareRig()) return;
+	const float Pull = FMath::Sin(Beat) * Weight;
+	Posed = Rest;
+	Tilt(Chest, FRotator(-8.f * Weight + 2.f * Pull, 0, 0));
+	Posed[Chest].AddToTranslation(FVector(0, 0, -15.f * Weight));
+	Tilt(Neck, FRotator(-36.f * Weight + 6.f * Pull, 5.f * Pull, 0));
+	Tilt(Skull, FRotator(-17.f * Weight, 11.f * Pull, 7.f * Pull));
+	Tilt(Jaw, FRotator(-7.f - 4.f * Pull, 0, 0));
+	Tilt(LeftEar, FRotator(-20.f * Weight, 6, 0));
+	Tilt(RightEar, FRotator(-20.f * Weight, -6, 0));
+	Tilt(Brush, FRotator(-22.f * Weight, 4.f * Pull, 0));
+	Tilt(Tip, FRotator(-10.f * Weight, 5.f * Pull, 0));
+	for (const FLeg& Leg : Legs)
+	{
+		FVector Foot = Rest[Leg.Paw].GetLocation();
+		Foot.X += (Leg.bFore ? 16.f : -12.f) * Weight + (Leg.bFore ? 3.f : 0.f) * Pull;
+		Foot.Y += FMath::Sign(Foot.Y) * 4.f * Weight;
+		Reach(Leg, Foot, Leg.bFore ? 6.f * Weight : -5.f * Weight);
 	}
 	FinishPose();
 }

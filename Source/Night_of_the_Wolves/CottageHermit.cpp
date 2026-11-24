@@ -179,7 +179,7 @@ void ACottageHermit::LoseFooting()
 	Voice->SetWorldLocation(Face->GetSocketLocation(TEXT("head")));
 	Voice->SetVolumeMultiplier(1.f);
 	Voice->SetMood(0.f, 0.f);
-	Voice->PlayLine(FallYell, EDialogueLine::HermitFallYell);
+	Voice->PlayLine(FallYell, EDialogueLine::PainYell);
 }
 
 void ACottageHermit::RestInPit()

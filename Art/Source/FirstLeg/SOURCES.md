@@ -32,6 +32,17 @@ The editable character is `/Game/NightOfTheWolves/Bandit/Creator/Villa`. In the 
 
 ## Props, voice and ambience
 
+The abandoned logging cableway has two original timber stations, a six-spoke iron sheave, an oxide-red hanger and a three-strand hemp sling. The stations reuse the [cabin wood scans](Carpentry/SOURCES.md). Rebuild the five saved meshes and three hardware finishes with the [Unreal Editor authoring script](../../../Scripts/crossing/build_skyline.py).
+
+The wheel roll, shackle clink and end-stop knock are original synthesized sounds. Their editor script saves the three sound waves under `/Game/NightOfTheWolves/Crossing/Foley`. [Foley authoring](../../../Scripts/crossing/build_cableway_foley.py)
+
+```sh
+"$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd" "$UE_PROJECT" -run=pythonscript \
+  "-script=$PWD/Scripts/crossing/build_skyline.py" -nullrhi -nosound -unattended -nop4
+```
+
+The shovel, oak cask and bound hay beside the cottage use the [yard models and PBR sources](CottageYard/SOURCES.md).
+
 The shovel, rope coil, coin pouch, firebrand and early static wolf come from [the prop generator](../../../Scripts/make_first_leg_props.py). It also synthesizes the hearth, door impact, growl and gunshot. Run it with Python 3 to regenerate the GLB and WAV sources, then use the [Unreal import script](../../../Scripts/import_first_leg_props.py).
 
 The hermit and bandit have original AI-generated performances of the game's six dialogue lines. Their dry takes, performance directions and location-specific mixes are documented with the audio sources. [Voice credits](Voices/SOURCES.md) · [Forest credits](../../../docs/FOREST.md) · [Presentation credits](../Presentation/SOURCES.md)

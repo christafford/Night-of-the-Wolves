@@ -1,7 +1,11 @@
 #include "FirstLegCrossing.h"
 #include "DialogueVoiceComponent.h"
 #include "WolfPackComponent.h"
-#include "FirstLegCrossingLayout.h"
+#include "WolfMeshComponent.h"
+#include "FirstLegCablewayLayout.h"
+#include "WolfHeldItem.h"
+#include "Components/CapsuleComponent.h"
+#include "TwoBoneIK.h"
 #include "Night_of_the_WolvesCharacter.h"
 #include "WolfTrailGameMode.h"
 #include "Animation/AnimSequence.h"
@@ -21,83 +25,167 @@ using namespace FirstLegLayout;
 
 namespace
 {
+// Max kicks off the deck. The wheel gathers speed on the grade, then loses
+// momentum in the level runout and meets the far stop at rest.
+constexpr float PushOffSlope = .74f;
+float TrolleySpeed(float TimeFraction)
+{
+	return FMath::CubicInterpDerivative(0.f, PushOffSlope, 1.f, 0.f, TimeFraction);
+}
+
 bool Within(const FVector& A,const FVector& B,float Radius)
 {
 	return FVector::Dist2D(A,B)<Radius && FMath::Abs(A.Z-B.Z)<235;
 }
+bool IsAtTrolley(const APawn& Pawn)
+{
+	const FVector Offset = Pawn.GetActorLocation() - FirstLegCableway::RiderPosition(0);
+	const ACharacter* Max = Cast<ACharacter>(&Pawn);
+	return Offset.SizeSquared2D() < FMath::Square(103.f) && FMath::Abs(Offset.Z) < 42.f &&
+		Max && Max->GetCharacterMovement()->IsMovingOnGround();
+}
 }
 
-void AFirstLegCrossing::TraversalMovement(APawn& Pawn,bool bActive)
+void AFirstLegCrossing::BeginRopePose(ACharacter& Max)
 {
-	ACharacter* Character=Cast<ACharacter>(&Pawn);
-	if (!Character) return;
-	auto* Move=Character->GetCharacterMovement();
-	Move->StopMovementImmediately();
-	Move->SetMovementMode(bActive ? MOVE_None : MOVE_Falling);
-	if (auto* Boom=Pawn.FindComponentByClass<USpringArmComponent>())
-	{
-		if (bActive)
-		{
-			bPreviousBoomCollision=Boom->bDoCollisionTest;
-			PreviousBoomLength=Boom->TargetArmLength;
-			PreviousBoomOffset=Boom->TargetOffset;
-			// Look over the bank from above throughout the fixed diagonal arc.
-			Boom->bDoCollisionTest=false;
-			Boom->TargetArmLength=340;
-			Boom->TargetOffset+=FVector(0,0,110);
-		}
-		else
-		{
-			Boom->bDoCollisionTest=bPreviousBoomCollision;
-			Boom->TargetArmLength=PreviousBoomLength;
-			Boom->TargetOffset=PreviousBoomOffset;
-		}
-	}
-	auto* Body=Character->GetMesh();
-	auto* Max=Cast<ANight_of_the_WolvesCharacter>(Character);
-	if (!bActive)
-	{
-		Body->SetVisibility(true);
-		if (Max) Max->SetHangingAppearance(nullptr);
-		if (IsValid(HangingPose)) HangingPose->DestroyComponent();
-		HangingPose=nullptr;
-		return;
-	}
-	// Pose both hands around the rope. Keep the regular locomotion animation
-	// instance intact so the landing immediately resumes normal movement.
-	HangingPose=NewObject<UPoseableMeshComponent>(Character);
+	if (IsValid(HangingPose)) return;
+	auto* Body = Max.GetMesh();
+	HangingPose = NewObject<UPoseableMeshComponent>(&Max);
 	HangingPose->SetupAttachment(Body);
 	HangingPose->SetSkinnedAssetAndUpdate(Body->GetSkinnedAsset());
 	HangingPose->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HangingPose->RegisterComponent();
-	for(int32 i=0;i<Body->GetNumMaterials();++i) HangingPose->SetMaterial(i,Body->GetMaterial(i));
+	for (int32 I = 0; I < Body->GetNumMaterials(); ++I)
+		HangingPose->SetMaterial(I, Body->GetMaterial(I));
+	// The regular locomotion instance keeps running while the sleeves and torso
+	// use the rope pose. It is available immediately when Max lets go.
 	HangingPose->CopyPoseFromSkeletalComponent(Body);
-	const auto Space=EBoneSpaces::WorldSpace;
-	auto AimBone=[&](FName Bone,FName Child,const FVector& Goal)
+	if (auto* Player = Cast<ANight_of_the_WolvesCharacter>(&Max))
+		Player->SetHangingAppearance(HangingPose);
+	if (auto* Held = Max.FindComponentByClass<UWolfHeldItem>())
+		Held->SetHiddenInGame(true, true);
+	Body->SetVisibility(false);
+}
+
+void AFirstLegCrossing::UpdateRopePose(ACharacter& Max, float CastProgress)
+{
+	if (!HangingPose) return;
+	using namespace FirstLegCableway;
+	const bool bCasting = Phase == EPhase::Casting;
+	const FVector Center = Max.GetActorLocation();
+
+	auto PlaceLimb = [this](FName Upper, FName Lower, FName End, const FVector& BendToward, const FVector& Target, float Weight)
 	{
-		const FVector Root=HangingPose->GetBoneLocationByName(Bone,Space);
-		const FVector Dir=(HangingPose->GetBoneLocationByName(Child,Space)-Root).GetSafeNormal();
-		const FQuat Delta=FQuat::FindBetweenNormals(Dir,(Goal-Root).GetSafeNormal());
-		const FQuat Rot=HangingPose->GetBoneTransformByName(Bone,Space).GetRotation();
-		HangingPose->SetBoneRotationByName(Bone,(Delta*Rot).Rotator(),Space);
+		constexpr auto World = EBoneSpaces::WorldSpace;
+		FTransform A = HangingPose->GetBoneTransformByName(Upper, World);
+		FTransform B = HangingPose->GetBoneTransformByName(Lower, World);
+		FTransform C = HangingPose->GetBoneTransformByName(End, World);
+		const FVector Goal = FMath::Lerp(C.GetLocation(), Target, double(Weight));
+		AnimationCore::SolveTwoBoneIK(A, B, C, BendToward, Goal, false, 1., 1.);
+		HangingPose->SetBoneRotationByName(Upper, A.Rotator(), World);
+		HangingPose->SetBoneRotationByName(Lower, B.Rotator(), World);
 	};
-	for(bool bLeft : {true,false})
+	if (bCasting)
+		HangingPose->CopyPoseFromSkeletalComponent(Max.GetMesh());
+	for (bool bLeft : {true, false})
 	{
-		const FVector Grip=Pawn.GetActorLocation()+Pawn.GetActorForwardVector()*12+FVector(0,0,bLeft?98:109);
-		const FVector Elbow=Grip+Pawn.GetActorRightVector()*(bLeft?-19:19)-FVector(0,0,19);
-		const FName Upper=bLeft?TEXT("upperarm_l"):TEXT("upperarm_r");
-		const FName Fore=bLeft?TEXT("lowerarm_l"):TEXT("lowerarm_r");
-		AimBone(Upper,Fore,Elbow);
-		AimBone(Fore,bLeft?TEXT("hand_l"):TEXT("hand_r"),Grip);
+		const float SideSign = bLeft ? -1.f : 1.f;
+		// Max keeps the coil at his left hip and swings his right arm from a
+		// low backswing into an underhand toss. Neither IK target reaches for the iron.
+		const float Swing = FMath::SmoothStep(.14f, .32f, CastProgress);
+		const float Settle = FMath::SmoothStep(.52f, .95f, CastProgress);
+		const FVector Back = Center - Axis * 26. + Side * 31. + FVector(0,0,-12);
+		const FVector Release = Center + Axis * 44. + Side * 21. + FVector(0,0,73);
+		const FVector Coil = Center + Axis * 17. - Side * 25. + FVector(0,0,16);
+		const FVector CastingHand = FMath::Lerp(FMath::Lerp(Back, Release, Swing),
+			Center + Axis * 21. + Side * 26. + FVector(0,0,22), Settle);
+		const FVector Target = bCasting ? (bLeft ? Coil : CastingHand) : GripPosition(RideFraction, bLeft);
+		const FVector Elbow = Center + Side * SideSign * 45.f - Axis * 12.f + FVector(0,0,42);
+		PlaceLimb(bLeft ? TEXT("upperarm_l") : TEXT("upperarm_r"), bLeft ? TEXT("lowerarm_l") : TEXT("lowerarm_r"),
+			bLeft ? TEXT("hand_l") : TEXT("hand_r"), Elbow, Target,
+			bCasting ? FMath::SmoothStep(0.f, .11f, CastProgress) : 1.f);
+		if (!bCasting)
+		{
+			const FVector Knee = Center + Axis * 46.f + Side * SideSign * 15.f - FVector(0,0,30);
+			const FVector Foot = Center - Axis * (bLeft ? 29.f : 38.f) + Side * SideSign * 12.f -
+				FVector(0,0, bLeft ? 64.f : 58.f);
+			PlaceLimb(bLeft ? TEXT("thigh_l") : TEXT("thigh_r"), bLeft ? TEXT("calf_l") : TEXT("calf_r"),
+				bLeft ? TEXT("foot_l") : TEXT("foot_r"), Knee, Foot, 1.f);
+		}
 	}
 	HangingPose->RefreshBoneTransforms();
-	if (Max) Max->SetHangingAppearance(HangingPose);
-	Body->SetVisibility(false);
+}
+
+void AFirstLegCrossing::EndRopePose(ACharacter& Max)
+{
+	if (!IsValid(HangingPose)) return;
+	Max.GetMesh()->SetVisibility(true);
+	if (auto* Player = Cast<ANight_of_the_WolvesCharacter>(&Max))
+		Player->SetHangingAppearance(nullptr);
+	if (auto* Held = Max.FindComponentByClass<UWolfHeldItem>())
+		Held->SetHiddenInGame(false, true);
+	HangingPose->DestroyComponent();
+	HangingPose = nullptr;
+}
+
+void AFirstLegCrossing::UpdateCableView(APawn& Pawn, float Delta)
+{
+	const bool bHandling = Phase == EPhase::Casting || Phase == EPhase::Riding;
+	const bool bNearCarriage = Phase == EPhase::Ready || Phase == EPhase::Rigged;
+	const double StageDistance = FVector::Dist2D(Pawn.GetActorLocation(), FirstLegCableway::NearStop);
+	const double Framing = bHandling ? 1. : bNearCarriage ? 1.-FMath::SmoothStep(225., 540., StageDistance) : 0.;
+	const bool bFramed = Framing > 0.;
+	if (!CableBoom.IsValid())
+	{
+		if (!bFramed) return;
+		CableBoom = Pawn.FindComponentByClass<USpringArmComponent>();
+		if (!CableBoom.IsValid()) return;
+		PreviousBoomLength = CableBoom->TargetArmLength;
+		PreviousBoomOffset = CableBoom->TargetOffset;
+		bPreviousBoomCollision = CableBoom->bDoCollisionTest;
+	}
+	// As Max walks up the ramp, include the bare hook before the player chooses
+	// a tool. The camera keeps its orbit controls while the rope is in use.
+	const FVector Aim = FirstLegCableway::Axis * 38. + FirstLegCableway::Side * 38. + FVector(0,0,165);
+	const FVector Offset = PreviousBoomOffset + Aim * Framing;
+	const float Length = FMath::Lerp(PreviousBoomLength, 640.f, Framing);
+	CableBoom->bDoCollisionTest = bFramed ? false : bPreviousBoomCollision;
+	CableBoom->TargetOffset = FMath::VInterpTo(CableBoom->TargetOffset, Offset, Delta, 11.f);
+	CableBoom->TargetArmLength = FMath::FInterpTo(CableBoom->TargetArmLength, Length, Delta, 11.f);
+	if (!bFramed && CableBoom->TargetOffset.Equals(PreviousBoomOffset,.3f) &&
+		FMath::IsNearlyEqual(CableBoom->TargetArmLength,PreviousBoomLength,.3f))
+		RestoreCableView();
+}
+
+void AFirstLegCrossing::RestoreCableView()
+{
+	if (!CableBoom.IsValid()) return;
+	CableBoom->bDoCollisionTest = bPreviousBoomCollision;
+	CableBoom->TargetArmLength = PreviousBoomLength;
+	CableBoom->TargetOffset = PreviousBoomOffset;
+	CableBoom.Reset();
+}
+
+void AFirstLegCrossing::TraversalMovement(APawn& Pawn, bool bActive)
+{
+	auto* Max = Cast<ACharacter>(&Pawn);
+	if (!Max) return;
+	Max->StopJumping();
+	Max->ConsumeMovementInputVector();
+	auto* Move = Max->GetCharacterMovement();
+	Move->StopMovementImmediately();
+	Move->SetMovementMode(bActive ? MOVE_None : MOVE_Falling);
+	if (bActive)
+	{
+		BeginRopePose(*Max);
+		UpdateRopePose(*Max, 1.f);
+	}
+	else EndRopePose(*Max);
 }
 
 bool AFirstLegCrossing::IsTraversalLocked() const
 {
-	return Phase==EPhase::Swinging || Phase==EPhase::Landing || Phase==EPhase::Missed;
+	return IsWatchingCreekPack() || AttackViewer.IsValid() || Phase==EPhase::Riding || Phase==EPhase::Landing || Phase==EPhase::Missed;
 }
 
 void AFirstLegCrossing::StageCue(const FString& Message,float Seconds)
@@ -119,18 +207,24 @@ void AFirstLegCrossing::NoticeGold()
 	QueueSpeech(GoldVoice);
 }
 
-void AFirstLegCrossing::StopSpeech()
+void AFirstLegCrossing::InterruptEncounter()
 {
+	EndCreekLookback();
+	if (Phase == EPhase::Casting && Cord) SetTrolleyPose(0.f, 0.f);
+	RestoreCableView();
+	if (WheelAudio) WheelAudio->Stop();
+	if (HardwareAudio) HardwareAudio->Stop();
+	if (IsValid(HangingPose))
+	{
+		if (auto* Max = Cast<ACharacter>(HangingPose->GetOwner()))
+		{
+			if (Phase == EPhase::Riding) TraversalMovement(*Max, false);
+			else EndRopePose(*Max);
+		}
+	}
 	PendingSpeech.Reset();
+	EndBanditShot(false);
 	if (Speech) Speech->ResetPerformance();
-}
-
-void AFirstLegCrossing::ShowRope(const FVector& End)
-{
-	Cord->SetVisibility(true);
-	Cord->SetWorldLocation((Anchor+End)*.5);
-	Cord->SetWorldRotation(FRotationMatrix::MakeFromZ(Anchor-End).Rotator());
-	Cord->SetWorldScale3D({.057,.057,FVector::Distance(Anchor,End)/100});
 }
 
 void AFirstLegCrossing::MoveBandit(const FVector& Position,const FVector& Facing)
@@ -140,26 +234,38 @@ void AFirstLegCrossing::MoveBandit(const FVector& Position,const FVector& Facing
 	BanditRoot->SetWorldRotation(FRotator(0,D.Rotation().Yaw,0));
 }
 
-void AFirstLegCrossing::Restore(int32 Checkpoint)
+void AFirstLegCrossing::Restore(int32 Checkpoint, const FVector& SavedPouchSite)
 {
+	InterruptEncounter();
 	Phase=Checkpoint>=5 ? EPhase::Escaped : Checkpoint==4 ? EPhase::FarBank :
 		  Checkpoint==3 ? EPhase::Ready : EPhase::Approach;
 	ActionTime=BankTime=PackTime=DiversionTime=AimTime=CueTime=0;
 	AttackTime=-1;
-	bPouchLanded=bReachedBend=bGoldDemandSpoken=false;
-	StopSpeech();
+	RideFraction = Checkpoint >= 4 ? 1.f : 0.f;
+	RideTime = RideFraction * TrolleyRideSeconds;
+	bWolfIntercept=bPouchLanded=bGoldDemandSpoken=bBanditStruck=false;
+	TimeUntilBanditFires=-1.f;
 	Cue.Empty();
 	if (!Cord) return;
+	Speech->SetVolumeMultiplier(.72f);
+	Bandit->SetRelativeLocation(FVector::ZeroVector);
+	Bandit->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+	BanditFace->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
 	MoveBandit(BanditMark+FVector(0,230,0),BanditMark-FVector(500,0,0));
 	Bandit->PlayAnimation(AimAnim,true);
-	if (Checkpoint>=4) ShowRope(Takeoff+FVector(0,0,40)); else Cord->SetVisibility(false);
-	GoldLanding=GoldPatch;
+	SetTrolleyPose(RideFraction, Checkpoint >= 4 ? 1.f : 0.f);
+	UpdateCableRoll(FirstLegCableway::HookSaddle(RideFraction), 0.f);
+	GoldLanding=Checkpoint>=5 && !SavedPouchSite.IsZero() ? SavedPouchSite : GoldPatch;
 	if (Checkpoint>=5)
 	{
 		Bag->SetWorldLocation(GoldLanding+FVector(0,0,12));
 		MoveBandit(GoldLanding,GoldLanding-FVector(200,0,0));
 		Bandit->PlayAnimation(DeathAnim,false);
 		Bandit->SetPosition(DeathAnim->GetPlayLength()-.02f,false);
+		Bandit->TickAnimation(0.f, false);
+		Bandit->RefreshBoneTransforms();
+		AttackAxis = (GoldLanding - FVector(12780,-930,50)).GetSafeNormal2D();
+		SetFallenPose(1.f);
 	}
 	Bag->SetVisibility(Checkpoint>=5);
 	for (int32 I=0; I<SpilledCoins.Num(); ++I)
@@ -167,11 +273,8 @@ void AFirstLegCrossing::Restore(int32 Checkpoint)
 		SpilledCoins[I]->SetWorldLocation(GoldLanding+FVector(9*I-34,20*FMath::Sin(I*2.2),0));
 		SpilledCoins[I]->SetVisibility(Checkpoint>=5);
 	}
-	SetRing(false);
-	Pack->Hide();
-	LastLead=Checkpoint>=4 ? FVector(9660,-1820,50) : FVector(8310,-1180,50);
-	AttackOrigin=LastLead;
-	if (Checkpoint==3 || Checkpoint==4) UpdatePack(0,LastLead,Checkpoint==3 ? CreekApproach : Landing);
+	HideCreekWakes();
+	if (Checkpoint==4) PlaceCreekPack(CreekHandoff,0.f,true);
 #if !UE_BUILD_SHIPPING
 	TestTime=0; TestWaypoint=0;
 #endif
@@ -179,36 +282,19 @@ void AFirstLegCrossing::Restore(int32 Checkpoint)
 
 UWolfMeshComponent* AFirstLegCrossing::GetLeadWolf() const { return Pack->GetLeadWolf(); }
 
-void AFirstLegCrossing::UpdatePack(float Delta,const FVector& Lead,const FVector& Quarry,bool bSwimming)
+void AFirstLegCrossing::UpdatePack(float Delta,float HoldDistance,bool bPermitAttack)
 {
-	const FVector D = (Lead-LastLead).GetSafeNormal2D();
-	const FVector ToQuarry = (Quarry-Lead).GetSafeNormal2D();
-	const FVector Heading = D.IsNearlyZero() ? ToQuarry : D;
-	const float Gap = FVector::Dist2D(Quarry,Lead);
-	const float Threat = bSwimming ? 0.f : 1.f-FMath::SmoothStep(200.f,775.f,Gap);
-	// The rules clock reaches its contact radius first. Behind it the lead wolf
-	// crouches a little farther out, with enough space to spring onto Max.
-	const FVector VisibleLead = Lead - ToQuarry*Threat*70.f;
-	Pack->Hunt(Delta,VisibleLead,Heading,Quarry,Threat,bSwimming);
-	LastLead = Lead;
-}
-
-void AFirstLegCrossing::SetRing(bool bVisible)
-{
-	for (int32 I=0;I<TargetRing.Num();++I)
+	const bool bFar=Phase>=EPhase::FarBank;
+	const FVector From=Pack->GetMember(1)->GetComponentLocation();
+	FVector Guide=Takeoff-FVector(0,0,94);
+	if (bFar)
 	{
-		const float Angle=I*2*PI/TargetRing.Num();
-		TargetRing[I]->SetWorldLocation(GoldLanding+FVector(48*FMath::Cos(Angle),48*FMath::Sin(Angle),2));
-		TargetRing[I]->SetVisibility(bVisible);
+		Guide=FarRoad[UE_ARRAY_COUNT(FarRoad)-1];
+		for (const FVector& Bend : FarRoad)
+			if (Bend.X>From.X+330.f) { Guide=Bend; break; }
 	}
-}
-
-bool AFirstLegCrossing::IsAimingAtGold(const APawn& Pawn) const
-{
-	if (!Within(Pawn.GetActorLocation(),GoldLanding,540)) return false;
-	const FVector ToGold=(GoldLanding-Pawn.GetActorLocation()).GetSafeNormal2D();
-	const FVector Aim=Pawn.GetControlRotation().Vector().GetSafeNormal2D();
-	return FVector::DotProduct(ToGold,Aim)>.58f;
+	const FVector Heading=(Guide-From).GetSafeNormal2D(SMALL_NUMBER,FVector::ForwardVector);
+	Pack->Hunt(Delta,Guide,Heading,HoldDistance,bFar ? EWolfGroundEncounter::FarBank : EWolfGroundEncounter::NearBank,bPermitAttack);
 }
 
 bool AFirstLegCrossing::IsInsideWater(const FVector& P) const
@@ -221,12 +307,13 @@ bool AFirstLegCrossing::TickEncounter(AWolfTrailGameMode& Game, APawn& Pawn, flo
 {
 	const FVector P=Pawn.GetActorLocation();
 	if (Game.IsDead()) return false;
+	UpdateCableView(Pawn, Delta);
 	if (!IsTraversalLocked() && (IsInsideWater(P) || (P.X>8450 && P.Z<-350)))
 	{
 		Game.Inventory.Extinguish(); Game.Die(TEXT("Current")); return true;
 	}
 	// This protects the supply route even if the user jumps off outside the dressed banks.
-	if (Phase<=EPhase::Attached && P.X>10870+StreamBend(P.Y))
+	if (Phase<=EPhase::Rigged && P.X>10870+StreamBend(P.Y))
 	{
 		Game.Inventory.Extinguish(); Game.Die(TEXT("Current")); return true;
 	}
@@ -235,40 +322,49 @@ bool AFirstLegCrossing::TickEncounter(AWolfTrailGameMode& Game, APawn& Pawn, flo
 		if (P.X<8950) return false;
 		if (!Game.Inventory.Has(TEXT("Rope")) || !Game.Inventory.Has(TEXT("Gold")))
 		{
-			Game.InteractionPrompt=TEXT("The span is gone. A rope could reach that limb.");
+			Game.InteractionPrompt=TEXT("The bridge is gone. A logging cable still crosses the creek.");
 			return false;
 		}
 		if (!Within(P,CreekApproach,510)) return false;
 		if (!Game.CommitCheckpoint(3,CreekApproach,FRotator(0,9,0))) return false;
 		Phase=EPhase::Ready;
-		StageCue(TEXT("Broken timbers twist in the current."));
+		StageCue(TEXT("A rusted trolley hangs beside the broken bridge."));
 	}
 	if (P.X >= 4000) Game.InteractionPrompt.Empty();
 	Game.ThreatCue.Empty();
 	CueTime-=Delta;
+	if (IsWatchingCreekPack())
+	{
+		AdvanceTrolley(Delta);
+		TickCreekLookback(Delta);
+		return true;
+	}
 	if (Phase>=EPhase::FarBank)
 	{
+		AdvanceTrolley(Delta);
 		UpdateFarBank(Game,Pawn,Delta);
 		if (CueTime>0) Game.ThreatCue=Cue;
 		return true;
 	}
 	const bool bFire=Game.Inventory.Equipped==TEXT("Firebrand") && Game.Inventory.bBurning;
 	BankTime+=Delta*(bFire ? .49f : 1.f);
-	const FVector PlayerFeet=P-FVector(0,0,94);
-	// While Max swings, wolves can reach the lip of the bank and wait there.
-	const FVector Hunted=IsTraversalLocked() ? Takeoff-FVector(0,0,94) : PlayerFeet;
-	if (BankTime<NearBankSeconds)
+	// The pack can reach the launching stage, but cannot follow the high cable.
+	if (Phase==EPhase::Riding || Phase==EPhase::Landing || Phase==EPhase::Missed)
 	{
-		UpdatePack(Delta,FMath::Lerp(FVector(8310,-1180,50),FVector(9540,-1190,50),BankTime/NearBankSeconds),Hunted);
+		Pack->ApproachBrokenBridge(Delta);
+	}
+	else if (BankTime<NearBankSeconds)
+	{
+		UpdatePack(Delta,FMath::Lerp(920.f,218.f,BankTime/NearBankSeconds),false);
 	}
 	else
 	{
-		UpdatePack(Delta,FMath::VInterpConstantTo(LastLead,Hunted,Delta,650),Hunted);
+		UpdatePack(Delta,120.f,!IsTraversalLocked());
 	}
-	if (FVector::Dist2D(PlayerFeet,LastLead)<110 && FMath::Abs(PlayerFeet.Z-LastLead.Z)<150)
+	if (!IsTraversalLocked() && BankTime>=NearBankSeconds)
 	{
 		Game.Die(TEXT("Wolves"));
-		return true;
+		if (Game.IsDead()) return true;
 	}
 	Game.ThreatCue=BankTime>NearBankSeconds*.71 ? TEXT("Paws scrape the near bank.") :
 		bFire ? TEXT("The pack hangs back from the flame.") : TEXT("Growling behind you.");
@@ -276,115 +372,161 @@ bool AFirstLegCrossing::TickEncounter(AWolfTrailGameMode& Game, APawn& Pawn, flo
 	if (P.X < 4000) return true;
 	if (IsTraversalLocked())
 	{
-		UpdateSwing(Game,Pawn,Delta); return true;
+		UpdateRide(Game, Pawn, Delta);
+		return true;
 	}
-	const bool bInReach=Within(P,Takeoff,310);
-	if (Phase==EPhase::Casting)
+	const bool bAtHook = IsAtTrolley(Pawn);
+	if (Phase == EPhase::Casting)
 	{
-		if (!bInReach || Game.Inventory.Equipped!=TEXT("Rope"))
+		auto& Max = *CastChecked<ACharacter>(&Pawn);
+		const bool bWalkingAway = ActionTime > .15f && !Max.GetLastMovementInputVector().IsNearlyZero(.2f);
+		if (!bAtHook || bWalkingAway || Game.Inventory.Equipped != TEXT("Rope"))
 		{
-			Phase=EPhase::Ready; Cord->SetVisibility(false);
-			StageCue(TEXT("The loose rope falls back into your hands.")); return true;
+			EndRopePose(Max);
+			Phase = EPhase::Ready;
+			SetTrolleyPose(0.f, 0.f);
+			StageCue(TEXT("The rope slips free. You still have it."));
+			return true;
 		}
-		ActionTime+=Delta;
-		const float T=FMath::Min(ActionTime/RopeCastSeconds,1.f);
-		const FVector Hand=P+FVector(0,0,45);
-		const FVector Tip=FMath::Lerp(Hand,Anchor,T)+FVector(0,0,175*FMath::Sin(PI*T));
-		Cord->SetVisibility(true); Cord->SetWorldLocation((Hand+Tip)*.5);
-		Cord->SetWorldRotation(FRotationMatrix::MakeFromZ(Tip-Hand).Rotator());
-		Cord->SetWorldScale3D({.057,.057,FVector::Distance(Hand,Tip)/100});
-		Game.InteractionPrompt=TEXT("Securing the rope…");
-		if (T>=1 && Game.Inventory.Consume(TEXT("Rope")))
+		ActionTime += Delta;
+		const float T = FMath::Min(ActionTime / CastRopeSeconds, 1.f);
+		// Move below the carriage. Walking or jumping interrupts the cast.
+		const FVector Mark = FirstLegCableway::RiderPosition(0.f);
+		const FVector Align = FMath::Lerp(CastingStart, Mark, FMath::SmoothStep(0.f, .34f, T));
+		Max.SetActorLocation(FVector(Align.X, Align.Y, Max.GetActorLocation().Z), true);
+		UpdateRopePose(Max, T);
+		ShowRopeCast(T);
+		Game.InteractionPrompt = TEXT("Casting the rope…");
+		if (T >= 1.f && Game.Inventory.Consume(TEXT("Rope")))
 		{
-			Phase=EPhase::Attached; ShowRope(Takeoff+FVector(0,0,40));
-			StageCue(TEXT("The rope catches and holds."));
+			EndRopePose(Max);
+			Phase = EPhase::Rigged;
+			SoundCableLatch(FirstLegCableway::HookSaddle(0), false);
+			StageCue(TEXT("Your rope hangs from the trolley."));
 		}
 		return true;
 	}
-	if (bInReach)
-		Game.InteractionPrompt=Phase==EPhase::Attached ? TEXT("E  Grip rope and swing") :
-			Game.Inventory.Equipped==TEXT("Rope") ? TEXT("F  Cast rope over the limb") : TEXT("A rope could reach the limb above the water.");
-	else Game.InteractionPrompt=TEXT("The leaning tree reaches the opposite shelf.");
+	if (bAtHook)
+	{
+		Game.InteractionPrompt = Phase == EPhase::Rigged ? TEXT("E  Grip the sling and ride") :
+			Game.Inventory.Equipped == TEXT("Rope") ? TEXT("F  Cast rope") :
+			TEXT("The trolley hook hangs high above the stage.");
+	}
+	else
+		Game.InteractionPrompt = TEXT("A cable runs from the loading stage to the far bank.");
 	return true;
 }
 
-void AFirstLegCrossing::UpdateSwing(AWolfTrailGameMode& Game,APawn& Pawn,float Delta)
+bool AFirstLegCrossing::IsAboveCatchDeck() const
 {
-	ActionTime+=Delta;
-	if (Phase==EPhase::Swinging)
+	return RideFraction >= FirstLegCableway::CatchDeckStart;
+}
+
+void AFirstLegCrossing::BeginDismount(APawn& Pawn)
+{
+	using namespace FirstLegCableway;
+	auto* Max = Cast<ACharacter>(&Pawn);
+	if (!Max) return;
+	// During the first metre Max is still pushing away from the loading
+	// platform. A second key press here must not drop him through the boards.
+	if (RideFraction <= .08f) return;
+	const float T = FMath::Clamp(RideTime / TrolleyRideSeconds, 0.f, 1.f);
+	const float TravelPerSecond = TrolleySpeed(T) / TrolleyRideSeconds;
+	const FVector Tangent = FarStop - NearStop - FVector(0, 0, 32.f * (1.f - 2.f * RideFraction));
+	Phase = IsAboveCatchDeck() ? EPhase::Landing : EPhase::Missed;
+	TraversalMovement(Pawn, false);
+	Max->LaunchCharacter(Tangent * TravelPerSecond, true, true);
+}
+
+void AFirstLegCrossing::AdvanceTrolley(float Delta)
+{
+	if (RideTime >= TrolleyRideSeconds) return;
+	RideTime = FMath::Min(RideTime + Delta, TrolleyRideSeconds);
+	const float T = RideTime / TrolleyRideSeconds;
+	RideFraction = FMath::CubicInterp(0.f, PushOffSlope, 1.f, 0.f, T);
+	SetTrolleyPose(RideFraction, 1.f);
+	UpdateCableRoll(FirstLegCableway::WireContact(RideFraction), TrolleySpeed(T) / 1.36f);
+	if (T >= 1.f)
+		SoundCableLatch(FirstLegCableway::WireContact(1.f), true);
+}
+
+void AFirstLegCrossing::UpdateRide(AWolfTrailGameMode& Game, APawn& Pawn, float Delta)
+{
+	using namespace FirstLegCableway;
+	AdvanceTrolley(Delta);
+	if (Phase == EPhase::Riding)
 	{
-		// A pendulum in the diagonal plane through the two banks.
-		const FVector Axis=(Landing-Takeoff).GetSafeNormal2D();
-		const float HalfSpan=FVector::Dist2D(Takeoff,Landing)*.5;
-		const float Height=Anchor.Z-Takeoff.Z;
-		const float Angle=-FMath::Atan2(HalfSpan,Height)*FMath::Cos(PI*ActionTime/OutwardSwingSeconds);
-		const float Radius=FMath::Sqrt(HalfSpan*HalfSpan+Height*Height);
-		const FVector Position=Anchor+Axis*(Radius*FMath::Sin(Angle))-FVector(0,0,Radius*FMath::Cos(Angle));
-		Pawn.SetActorLocation(Position);
-		ShowRope(IsValid(HangingPose) ? HangingPose->GetSocketLocation(TEXT("hand_l")) : Position+FVector(0,0,95));
-		const float SwingFraction=ActionTime/OutwardSwingSeconds;
-		Game.InteractionPrompt=SwingFraction<.53f ? TEXT("Swing toward the moonlit shelf") :
-			SwingFraction<=1.18f ? TEXT("E  Release over the far shelf") : TEXT("The rope swings back to the broken bridge.");
-		if (ActionTime>=2*OutwardSwingSeconds)
-		{
-			Pawn.SetActorLocation(Takeoff); TraversalMovement(Pawn,false);
-			Phase=EPhase::Attached; ShowRope(Takeoff+FVector(0,0,40));
-			StageCue(TEXT("The swing carries you back."));
-		}
+		Pawn.SetActorLocation(RiderPosition(RideFraction));
+		if (RideFraction <= .08f)
+			Game.InteractionPrompt = TEXT("Pushing off the loading stage…");
+		else
+			Game.InteractionPrompt = TEXT("E  Let go");
 		return;
 	}
-	const float T=FMath::Min(ActionTime/.64f,1.f);
-	const bool bLanding=Phase==EPhase::Landing;
-	const FVector Target=bLanding ? Landing :
-		FVector(FMath::Clamp(ReleaseLocation.X+90.,10010.,10720.),ReleaseLocation.Y,-160);
-	ShowRope(FMath::Lerp(ReleaseLocation,Takeoff,T)+FVector(0,0,40));
-	Pawn.SetActorLocation(FMath::Lerp(ReleaseLocation,Target,T)+FVector(0,0,bLanding ? 90*FMath::Sin(PI*T) : 0));
-	if (T>=1)
+	// Normal character gravity, inherited trolley velocity and real walkable
+	// collision decide where Max lands. A last-moment release can carry him
+	// onto the first plank even when he lets go just ahead of the lip.
+	auto& Max = *CastChecked<ACharacter>(&Pawn);
+	const FVector P = Max.GetActorLocation();
+	const FVector StartOfPlanks = RiderPosition(CatchDeckStart);
+	const bool bOverLanding = FVector::DotProduct(P - StartOfPlanks, Axis) >= -3.f;
+	if (Max.GetCharacterMovement()->IsMovingOnGround() && bOverLanding)
 	{
-		if (bLanding) FinishLanding(Game,Pawn);
-		else {Game.Inventory.Extinguish();Game.Die(TEXT("Current"));}
+		FinishLanding(Game, Pawn);
+	}
+	else if (IsInsideWater(P) || P.Z < -160.f || (Max.GetCharacterMovement()->IsMovingOnGround() && !bOverLanding))
+	{
+		Game.Inventory.Extinguish();
+		Game.Die(TEXT("Current"));
 	}
 }
 
-void AFirstLegCrossing::FinishLanding(AWolfTrailGameMode& Game,APawn& Pawn)
+void AFirstLegCrossing::FinishLanding(AWolfTrailGameMode& Game, APawn& Pawn)
 {
-	if (!Game.Inventory.Has(TEXT("Gold"))) {Game.Die(TEXT("Current"));return;}
-	TraversalMovement(Pawn,false);
-	ShowRope(Takeoff+FVector(0,0,40));
-	Phase=EPhase::FarBank; PackTime=0; AttackOrigin=LastLead;
-	Game.CommitCheckpoint(4,Landing,FRotator(0,0,0));
-	StageCue(TEXT("Behind you, the first wolf tests the water."),3);
+	if (!Game.Inventory.Has(TEXT("Gold"))) { Game.Die(TEXT("Current")); return; }
+	Phase = EPhase::FarBank;
+	PackTime = 0;
+	if (Game.CommitCheckpoint(4, Landing, FRotator(0,0,0)))
+		BeginCreekLookback(Pawn);
 }
 
 bool AFirstLegCrossing::TryAction(AWolfTrailGameMode& Game,APawn& Pawn,bool bItemUse)
 {
-	if (Game.IsDead() || Phase==EPhase::Approach) return false;
-	// A player can still return to the fireplace while the pack is behind them.
-	if (Phase<=EPhase::Attached && Pawn.GetActorLocation().X < 4000) return false;
-	if (Phase==EPhase::Swinging)
+	if (Game.IsDead() || Phase == EPhase::Approach) return false;
+	if (IsWatchingCreekPack()) return true;
+	if (Phase <= EPhase::Rigged && Pawn.GetActorLocation().X < 4000) return false;
+	if (Phase == EPhase::Riding)
 	{
-		if (bItemUse) return true;
-		const float T=ActionTime/OutwardSwingSeconds;
-		Phase=(T>=.53f && T<=1.18f) ? EPhase::Landing : EPhase::Missed;
-		ReleaseLocation=Pawn.GetActorLocation();
-		ActionTime=0;
+		if (!bItemUse) BeginDismount(Pawn);
 		return true;
 	}
-	if (Phase==EPhase::Ready && Within(Pawn.GetActorLocation(),Takeoff,310))
+	if (Phase == EPhase::Ready && IsAtTrolley(Pawn))
 	{
-		if (bItemUse && Game.Inventory.Equipped==TEXT("Rope") && Game.Inventory.Has(TEXT("Gold")))
+		if (bItemUse && Game.Inventory.Equipped == TEXT("Rope") && Game.Inventory.Has(TEXT("Gold")))
 		{
-			Phase=EPhase::Casting; ActionTime=0;
+			auto& Max = *CastChecked<ACharacter>(&Pawn);
+			Max.GetCharacterMovement()->StopMovementImmediately();
+			CastingStart = Max.GetActorLocation();
+			Max.SetActorRotation(FirstLegCableway::Axis.Rotation());
+			Phase = EPhase::Casting;
+			CastOrigin = FVector::ZeroVector;
+			ActionTime = 0.f;
+			BeginRopePose(Max);
 		}
-		else StageCue(TEXT("The high limb needs a length of rope."));
+		else StageCue(TEXT("The bare hook is out of reach."));
 		return true;
 	}
-	if (Phase==EPhase::Attached && !bItemUse && Within(Pawn.GetActorLocation(),Takeoff,310))
+	if (Phase == EPhase::Rigged && !bItemUse && IsAtTrolley(Pawn))
 	{
-		Phase=EPhase::Swinging; ActionTime=0;
-		Pawn.SetActorRotation(FRotator(0,(Landing-Takeoff).Rotation().Yaw,0));
-		TraversalMovement(Pawn,true);
-		if (AController* Controller=Pawn.GetController()) Controller->SetControlRotation(FRotator(-16,(Landing-Takeoff).Rotation().Yaw,0));
+		Phase = EPhase::Riding;
+		RideTime = RideFraction = 0.f;
+		Pawn.SetActorLocation(FirstLegCableway::RiderPosition(0.f));
+		const float Yaw = FirstLegCableway::Axis.Rotation().Yaw;
+		Pawn.SetActorRotation(FRotator(0, Yaw, 0));
+		TraversalMovement(Pawn, true);
+		if (AController* Controller = Pawn.GetController())
+			Controller->SetControlRotation(FRotator(-9, Yaw - 32.f, 0));
+		StartCableRoll(FirstLegCableway::WireContact(0.f));
 		return true;
 	}
 	if (Phase==EPhase::Demand && bItemUse)
@@ -394,16 +536,9 @@ bool AFirstLegCrossing::TryAction(AWolfTrailGameMode& Game,APawn& Pawn,bool bIte
 			StageCue(TEXT("His gun stays raised. He gestures at your bag.")); return true;
 		}
 		NoticeGold();
-		if (!IsAimingAtGold(Pawn))
-		{
-			StageCue(TEXT("Look back at the marked patch to toss the sack.")); return true;
-		}
 		if (Game.Inventory.Consume(TEXT("Gold")))
 		{
-			Phase=EPhase::Diversion; DiversionTime=0; TossOrigin=Pawn.GetActorLocation()+FVector(0,0,25);
-			Bag->SetWorldLocation(TossOrigin); Bag->SetVisibility(true); SetRing(false);
-			Bandit->PlayAnimation(WalkAnim,true);
-			QueueSpeech(StayVoice);
+			ThrowPouch(Pawn);
 		}
 		return true;
 	}
@@ -413,6 +548,14 @@ bool AFirstLegCrossing::TryAction(AWolfTrailGameMode& Game,APawn& Pawn,bool bIte
 void AFirstLegCrossing::UpdateFarBank(AWolfTrailGameMode& Game,APawn& Pawn,float Delta)
 {
 	if (Phase==EPhase::Escaped) return;
+	// During the cutaway the ordinary escape clock is held. The player always gets
+	// the full remaining diversion when the view returns to the road.
+	if (AttackViewer.IsValid())
+	{
+		AttackTime += Delta;
+		AdvanceBanditAttack(Delta);
+		return;
+	}
 	// A quick equip and throw can request all three lines before the first one ends.
 	if (!PendingSpeech.IsEmpty() && Speech && !Speech->IsDelivering())
 	{
@@ -428,41 +571,28 @@ void AFirstLegCrossing::UpdateFarBank(AWolfTrailGameMode& Game,APawn& Pawn,float
 	const FVector P=Pawn.GetActorLocation();
 	PackTime+=Delta;
 	const float Clock=PackTime*26.f/FMath::Max(4.f,PackRouteSeconds);
-	// The same silhouettes approach, wade in, swim downstream and climb onto this bank.
-	static const FVector Route[]={{9690,-1830,50},{9780,-1940,12},{10010,-2070,-248},{10780,-2220,-248},
-		{11070,-2180,30},{11580,-1020,50},{12780,-930,50},{13420,-765,50}};
-	static const float Arrival[]={3.0f,4.5f,6.f,9.f,11.f,14.5f,19.5f,22.f};
-	FVector Lead;
-	if (Clock<Arrival[UE_ARRAY_COUNT(Arrival)-1])
+	// The camera has already shown them entering the channel. They keep swimming
+	// during Max's head start and resume hunting from their real exit point.
+	const bool bInCreek=Clock<=11.f;
+	const bool bDiverted=Phase==EPhase::Diversion && bWolfIntercept && TimeUntilBanditFires<0.f;
+	const bool bAtBend=P.X>=Escape.X && FMath::Abs(P.Y-Escape.Y)<1300 && P.Z>20;
+	const bool bBackOnTrail=bDiverted && AttackTime>=BanditShotEnd()+DiversionSeconds && !bAtBend;
+	if (bInCreek)
+		PlaceCreekPack(CreekHandoff+Clock,Delta);
+	else if (bDiverted && !bBackOnTrail && AttackTime<0.f)
+		Pack->PursueDiversion(Delta,GoldLanding);
+	else if (!bDiverted || bBackOnTrail)
 	{
-		int32 I=0;
-		while (I+1<UE_ARRAY_COUNT(Arrival) && Clock>=Arrival[I]) ++I;
-		const FVector Start=I==0 ? AttackOrigin : Route[I-1];
-		const float StartTime=I==0 ? 0 : Arrival[I-1];
-		Lead=FMath::Lerp(Start,Route[I],(Clock-StartTime)/(Arrival[I]-StartTime));
+		const bool bVulnerable=bBackOnTrail || Clock>=21.f || P.X<12250.f;
+		const float Hold=bVulnerable ? 120.f : FMath::GetMappedRangeValueClamped(FVector2D(11,21),FVector2D(900,225),Clock);
+		UpdatePack(Delta,Hold,bVulnerable);
 	}
-	else
+	if (!bDiverted && Clock>11)
 	{
-		const FVector Goal=Phase==EPhase::Diversion ? GoldLanding : P-FVector(0,0,94);
-		Lead=FMath::VInterpConstantTo(LastLead,Goal,Delta,420);
+		Game.Die(TEXT("Wolves"));
+		if (Game.IsDead()) return;
 	}
-
-	// If Max waits near the water the pack turns toward him after climbing out.
-	if (Clock>11.1f && P.X<12250 && Phase!=EPhase::Diversion)
-		Lead=FMath::VInterpConstantTo(LastLead,P-FVector(0,0,94),Delta,570);
-	if (Phase==EPhase::Diversion && AttackTime>=0)
-	{
-		const bool bHunt=DiversionTime>DiversionSeconds && AttackTime>3.f && !bReachedBend;
-		Lead=FMath::VInterpConstantTo(LastLead,(bHunt ? P-FVector(0,0,94) : GoldLanding),Delta,690);
-	}
-	const bool bSeizingBandit = Phase==EPhase::Diversion && (DiversionTime<=DiversionSeconds || AttackTime<3.f);
-	UpdatePack(Delta,Lead,bSeizingBandit ? GoldLanding : P,Clock>5 && Clock<10);
-	if (Phase!=EPhase::Diversion && Clock>11 && FVector::Dist2D(P,Lead)<120)
-	{
-		Game.Die(TEXT("Wolves")); return;
-	}
-	Game.ThreatCue=Clock<5 ? TEXT("The pack gathers at the broken bridge.") :
-		Clock<10 ? TEXT("Downstream, dark heads break the surface.") : TEXT("Wet paws scramble up the bank behind you.");
+	Game.ThreatCue=Clock<9 ? TEXT("Downstream, dark heads break the surface.") : TEXT("Wet paws scramble up the bank behind you.");
 	if (Phase==EPhase::FarBank && P.X>13610)
 	{
 		Phase=EPhase::Demand;
@@ -487,30 +617,32 @@ void AFirstLegCrossing::UpdateFarBank(AWolfTrailGameMode& Game,APawn& Pawn,float
 			}
 		}
 		else AimTime=0;
-		SetRing(bGold);
-		Game.InteractionPrompt=bGold ? (IsAimingAtGold(Pawn) ? TEXT("F  Toss the sack onto the moonlit patch") :
-			TEXT("Look behind you for the moonlit patch.")) : TEXT("The stranger raises his gun and points at your belongings.");
+		Game.InteractionPrompt=bGold ? TEXT("F  Throw gold") : TEXT("The stranger raises his gun and points at your belongings.");
 		return;
 	}
 	if (Phase!=EPhase::Diversion) return;
 	DiversionTime+=Delta;
 	if (!bPouchLanded)
 	{
-		const float T=FMath::Min(DiversionTime/.67f,1.f);
-		Bag->SetWorldLocation(FMath::Lerp(TossOrigin,GoldLanding+FVector(0,0,12),T)+FVector(0,0,110*FMath::Sin(PI*T)));
-		if (T>=1)
+		AdvancePouch(Pawn,Delta);
+		if (bPouchLanded && bWolfIntercept && TimeUntilBanditFires<0.f)
 		{
-			bPouchLanded=true;
-			UGameplayStatics::PlaySoundAtLocation(this,Coins,GoldLanding,.85f);
-			for (int32 I=0;I<SpilledCoins.Num();++I)
-			{
-				SpilledCoins[I]->SetWorldLocation(GoldLanding+FVector(9*I-34,20*FMath::Sin(I*2.2),0));
-				SpilledCoins[I]->SetVisibility(true);
-			}
+			Bandit->PlayAnimation(WalkAnim,true);
+			QueueSpeech(StayVoice);
 		}
 	}
-	if (AttackTime<0)
+	if (AttackTime<0.f)
 	{
+		const bool bBreakingAway=IsBreakingAway(P);
+		// The catch must actually happen. If the wolf cannot reach the
+		// robber, he finishes collecting the money and turns back to Max.
+		const bool bFinishedCollecting=!bInCreek && DiversionTime>FMath::Max(PackRouteSeconds,18.f);
+		if (TimeUntilBanditFires>=0.f || (bPouchLanded && !bWolfIntercept) || bBreakingAway || bFinishedCollecting)
+		{
+			CoverMax(Game,Pawn,Delta,bBreakingAway);
+			return;
+		}
+		if (!bPouchLanded) return;
 		const FVector Goal=GoldLanding+FVector(0,42,-5);
 		FVector Position=FMath::VInterpConstantTo(BanditRoot->GetComponentLocation(),Goal,Delta,320);
 		if (FVector::DistSquared2D(Position,Goal)>100) MoveBandit(Position,Goal);
@@ -522,25 +654,25 @@ void AFirstLegCrossing::UpdateFarBank(AWolfTrailGameMode& Game,APawn& Pawn,float
 			if (!Pose || Pose->GetAnimationAsset()!=StoopAnim) Bandit->PlayAnimation(StoopAnim,false);
 			Bandit->SetPosition(.13f+.055f*FMath::Sin(DiversionTime*3.f),false);
 		}
-		if (Clock>11 && FVector::Dist2D(Lead,BanditRoot->GetComponentLocation())<170)
+		UWolfMeshComponent* Leader = Pack->GetLeadWolf();
+		if (bWolfIntercept && FVector::Dist2D(Position, Goal) <= 10.f && Clock > 11.f &&
+			Leader && FVector::Dist2D(Leader->GetComponentLocation(), Goal) < 525.f &&
+			PendingSpeech.IsEmpty() && !Speech->IsDelivering())
 		{
-			AttackTime=0;
-			StopSpeech();
-			Bandit->PlayAnimation(DeathAnim,false);
-			UGameplayStatics::PlaySoundAtLocation(this,Shot,BanditRoot->GetComponentLocation(),.8);
-			StageCue(TEXT("A cry at the bend. One wild shot."),3.5);
+			BeginBanditAttack(Pawn);
 		}
 	}
 	else
 	{
-		AttackTime+=Delta;
-		if (DiversionTime>DiversionSeconds && AttackTime>3 && FVector::Dist2D(P,Lead)<150)
+		AttackTime += Delta;
+		if (!bBackOnTrail) AdvanceBanditAttack(Delta);
+		if (bBackOnTrail)
 		{
-			Game.Die(TEXT("Wolves")); return;
+			Game.Die(TEXT("Wolves"));
+			if (Game.IsDead()) return;
 		}
 	}
-	bReachedBend=P.X>=Escape.X && FMath::Abs(P.Y-Escape.Y)<1300 && P.Z>20;
-	if (bReachedBend && AttackTime>=.4f && Game.CommitCheckpoint(5,Escape,FRotator(0,14,0)))
+	if (bAtBend && Game.CommitCheckpoint(5,Escape,FRotator(0,14,0)))
 	{
 		Phase=EPhase::Escaped;
 		StageCue(TEXT("A familiar howl rises behind you."),4);

@@ -19,11 +19,12 @@ void UDialogueVoiceComponent::BindFace(USkeletalMeshComponent* InFace)
 	OnAudioPlaybackPercentNative.AddUObject(this, &ThisClass::OnMixerPosition);
 }
 
-void UDialogueVoiceComponent::SetMood(float Anger, float Interest)
+void UDialogueVoiceComponent::SetMood(float Anger, float Interest, float Fear)
 {
 	if (Interest > InterestTarget) InterestAge = 0.f;
 	AngerTarget = Anger;
 	InterestTarget = Interest;
+	FearTarget = Fear;
 	SetComponentTickEnabled(true);
 }
 
@@ -33,14 +34,14 @@ void UDialogueVoiceComponent::PlayLine(USoundBase* Wave, EDialogueLine Line)
 	if (IsDelivering()) FinishLine(false);
 	Stop();
 	ActiveLine = Line;
-	Duration = Line == EDialogueLine::HermitFallYell ? Wave->GetDuration() : GetDialogueDuration(Line);
+	Duration = Line == EDialogueLine::PainYell ? Wave->GetDuration() : GetDialogueDuration(Line);
 	Elapsed = MixerSeconds = SampleAge = 0.f;
 	bHeardMixer = false;
 	SetSound(Wave);
 	Play();
 	bPlayingAudio = IsPlaying();
 	SetComponentTickEnabled(true);
-	if (Line != EDialogueLine::HermitWarning && Line != EDialogueLine::HermitFallYell)
+	if (Line != EDialogueLine::HermitWarning && Line != EDialogueLine::PainYell)
 		Shot = UDialogueCameraModifier::FrameSpeaker(Face, Line);
 }
 
@@ -68,7 +69,7 @@ void UDialogueVoiceComponent::ResetPerformance()
 {
 	FinishLine(true);
 	Stop();
-	AngerWeight = InterestWeight = AngerTarget = InterestTarget = InterestAge = 0.f;
+	FearWeight = FearTarget = AngerWeight = InterestWeight = AngerTarget = InterestTarget = InterestAge = 0.f;
 	if (Face)
 		if (auto* Anim = Cast<UDialogueFaceAnimInstance>(Face->GetAnimInstance()))
 			Anim->SetPerformance({}, 0.f, 0.f);
@@ -94,7 +95,7 @@ void UDialogueVoiceComponent::TickComponent(float Dt, ELevelTick TickType, FActo
 			FinishLine(false);
 		else
 		{
-			if (ActiveLine == EDialogueLine::HermitFallYell)
+			if (ActiveLine == EDialogueLine::PainYell)
 			{
 				// The wordless cry opens on the first vowel and trails off before impact.
 				Mouth.JawOpen = FMath::SmoothStep(.02f, .13f, Seconds) *
@@ -107,13 +108,14 @@ void UDialogueVoiceComponent::TickComponent(float Dt, ELevelTick TickType, FActo
 
 	AngerWeight = FMath::FInterpTo(AngerWeight, AngerTarget, Dt, 9.f);
 	InterestWeight = FMath::FInterpTo(InterestWeight, InterestTarget, Dt, 8.f);
+	FearWeight = FMath::FInterpTo(FearWeight, FearTarget, Dt, 6.f);
 	InterestAge += Dt;
 	// He glances at the sack, then brings his eyes back to Max with the smile still there.
 	const float Glance = InterestWeight * (1.f - FMath::SmoothStep(.40f, 1.05f, InterestAge));
 	const float Blink = InterestWeight * (1.f - FMath::Clamp(FMath::Abs(InterestAge - .16f) / .085f, 0.f, 1.f));
 	if (auto* Anim = Cast<UDialogueFaceAnimInstance>(Face->GetAnimInstance()))
-		Anim->SetPerformance(Mouth, AngerWeight, InterestWeight, Glance, Blink);
+		Anim->SetPerformance(Mouth, AngerWeight, InterestWeight, Glance, Blink, FearWeight);
 	if (!IsDelivering() && InterestAge > 1.05f && FMath::IsNearlyEqual(AngerTarget, AngerWeight) &&
-		FMath::IsNearlyEqual(InterestTarget, InterestWeight))
+		FMath::IsNearlyEqual(InterestTarget, InterestWeight) && FMath::IsNearlyEqual(FearTarget, FearWeight))
 		SetComponentTickEnabled(false);
 }

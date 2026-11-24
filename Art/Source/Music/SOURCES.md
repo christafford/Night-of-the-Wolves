@@ -1,0 +1,7 @@
+# No Birds at This Hour
+
+The pursuit cue is an original 76-second stereo loop. A single bowed contrabass holds D while the cellos descend a semitone from B-flat to A. Violas rise against that note and tremble at the edge of the sound. Later the bass drops to A-flat, hanging there before the opening bow comes round again. Nine soft drum strokes and two low cymbal swells punctuate the rests. The opening bass bow, upper strings and room decay continue across the file boundary.
+
+The six individual instrument recordings come from Versilian Studios’ VS Chamber Orchestra 2 Community Edition, released under CC0. The renderer pins the sample revision and records each instrument’s source path. It caches the recordings in `Intermediate/ScoreSamples`. The composition, orchestration, note envelopes, stereo placement and mix were made for *Night of the Wolves*. [Versilian Studios](https://versilian-studios.com/vsco-community/) · [Sample revision](https://github.com/sgossner/VSCO-2-CE/tree/440300901dfe9275fd84e0b7763af1f8443ae62e)
+
+Run `python3 Scripts/score/render_moonlit_pursuit.py` with NumPy, SciPy, soundfile and FFmpeg installed. The renderer writes the 48 kHz stereo PCM master alongside this file. The editor importer saves the looping SoundWave under `/Game/NightOfTheWolves/Music/SW_MoonlitPursuit`. [Score renderer](../../../Scripts/score/render_moonlit_pursuit.py) · [SoundWave importer](../../../Scripts/score/import_moonlit_pursuit.py)

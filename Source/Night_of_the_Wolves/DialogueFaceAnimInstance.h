@@ -13,7 +13,7 @@ class UDialogueFaceAnimInstance : public UAnimInstance
 
 public:
 	void SetPerformance(const FDialogueMouthPose& Mouth, float Anger, float GoldInterest,
-		float LookDown = 0.f, float Blink = 0.f);
+		float LookDown = 0.f, float Blink = 0.f, float Fear = 0.f);
 
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
@@ -30,4 +30,5 @@ private:
 	float Interest = 0.f;
 	float DownwardGaze = 0.f;
 	float BlinkAmount = 0.f;
+	float Alarm = 0.f;
 };

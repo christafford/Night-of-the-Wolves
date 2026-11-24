@@ -11,7 +11,7 @@ enum class EDialogueLine : uint8
 	BanditDemand,
 	BanditGold,
 	BanditStay,
-	HermitFallYell
+	PainYell
 };
 
 // Normalized articulators. All-zero is the unmodified facial rest pose.

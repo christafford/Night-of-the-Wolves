@@ -104,6 +104,7 @@ protected:
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
+	virtual bool CanJumpInternal_Implementation() const override;
 
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -118,8 +119,16 @@ protected:
 
 public:
 
-	/** Keep the clothes and head in the captured body pose during the creek swing. */
+	/** Keep the clothes and head aligned with Max's grip during the cable crossing. */
 	void SetHangingAppearance(USkinnedMeshComponent* HangingBody);
+	void BeginDigAppearance(USkinnedMeshComponent* WorkingBody);
+	void FollowDigHead(const FTransform& Head);
+	void EndDigAppearance();
+
+private:
+	FTransform RestFaceRelative;
+	FTransform FaceFromHead;
+public:
 
 	/** Handles move inputs from either controls or UI interfaces */
 	UFUNCTION(BlueprintCallable, Category="Input")

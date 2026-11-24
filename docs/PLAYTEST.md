@@ -1,5 +1,172 @@
 # Playtest record
 
+## The robbery and “No Birds at This Hour”, November 23, 2026
+
+The Development check `Wolf.TestRobbery` started with an earned far-bank save. It threw with the sack equipped, used the gameplay sprint input, and tracked Max's movement, the pouch landing, the wolf strike and the saved checkpoint.
+
+| Attempt | Observed result |
+| --- | --- |
+| Throw uphill and sprint past the robber | Max ran 11.88 m at up to 6.75 m/s. The bandit shot him 1.93 s after release. |
+| Throw across the trail and sprint along the outer shoulder | Max ran 11.93 m. The bandit shot him 2.58 s after release. |
+| Drop the sack short and stay still | Max stood where he threw it. The bandit shot him after 2.27 s. |
+| Throw into the pack’s approach and immediately bolt | The pouch landed on the approach. The bandit was still armed. He shot Max after 1.93 s. |
+| Wait for the takedown, then sprint | The leader struck the robber. The camera returned to Max and the sprint earned CP5 on disk. |
+
+In the final Linux Shipping build, keyboard and mouse input sent Max sprinting around the bandit immediately after the wrong throw. The bandit’s shot brought up the death card 2.10 s after release. Retry restored the pouch. In the same process, a throw toward the pack, the actual takedown and a sprint after camera handoff earned CP5 on disk. Nine passages in the packaged stereo mix matched the new score at a common offset. The game exited 0. [Watch both packaged attempts with game audio](../Saved/RobberyReview/No-Escape-Without-the-Pack.mp4)
+
+The 76-second stereo score was reimported as a looping Unreal SoundWave. A 96.8 s capture of the Development game mixer at the burning tree matched twelve passages from the new master, including a 1.25 s excerpt across the loop boundary. The stereo source measures −21.0 LUFS and −6.12 dBTP. [Hear the new score](../Art/Source/Music/SW_MoonlitPursuit.wav)
+
+Each death returned Max to CP4 with exactly one sack. Early requests to save CP5 were refused. A separate clean run reached CP5 in 99.50 game seconds and continued through the storm and cave to CP6. The full recovery run also passed. Linux Shipping compiled, cooked, staged and archived successfully in 3m 39s. The archived executable matched the built binary, and all 81 checked assets were in the cooked container.
+
+## Previous release introducing the storm at the escape bend, November 23, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Opening and wolf capture | The Development camera ran 67.5 m past four wolves, revealed the same silver alpha taking the lead, and returned control to Max after 11.23 s. An idle Max was pounced on 5.03 s after handoff. The recorded card snarl starts as the static death image appears. Retry returned to third person. |
+| Packaged opening and death-card audio | A 21.7 s stereo recording from the archived executable shows the four runners, the silver fifth taking point, the handoff, pounce, static portrait and CP0 retry. Three excerpts from the snarl matched the game audio, starting within 0.10 s of the first visible death lettering. The score enters on the handoff. [Watch the opening and capture](../Saved/StormReview/Alpha-and-the-Pack.mp4) |
+| Miss and recover at the robbery | The full movement and equipment driver threw uphill. The sack landed 5.44 m away. The bandit went to it, the wolves caught Max, and CP4 restored one sack. Two throws downhill landed 2.26 m apart across the approach. Both brought the wolves to the bandit. Lingering through the distraction let the pack return to Max. Running on earned CP5. |
+| Packaged gold throw | With keyboard and mouse in the archived game, a throw uphill spent the pouch. The wolves caught Max, automatic retry restored CP4 and the equipment wheel offered the sack again. A throw downhill drew the bandit into the live pack. The close-up, takedown and camera handoff played, and Max reached CP5 on disk. The process exited 0. [Watch both throws](../Saved/StormReview/Two-Gold-Throws.mp4) |
+| Fall into the river | Starting at the near bank, Max walked into the current twice. The existing Wilhelm recording started 0.17 s after entering the water. His wrist travelled 96 cm, his head descended 90 cm and the current carried him 2.57 m. The card appeared after 3.40 s. Automatic retry and a retry during the struggle restored the rope, gold, camera and movement at the near bank (CP3). |
+| Packaged river and score | The Shipping player sprinted off the near bank using W and Shift. The stereo recording shows Max’s alternating reaches, submersion, card and respawn with his original burning brand. The captured mix matched the Wilhelm recording and 20 passages of the new brass-and-drum score. The process exited 0 and the isolated save remained at CP3. [Watch Max in the current](../Saved/StormReview/Max-in-the-Current.mp4) |
+| Wolves fear the burning fir | On a continuous trailhead run, the five original wolves increased their distance from the fire by 9.20, 9.91, 10.65, 15.44 and 5.12 m. Two started off the road near the river. The test followed the same actors frame by frame and rejected discontinuous movement. A second run retried during the reaction shot, replayed it from CP5, then left Max standing in the clearing without a flame for 64 s. All five stayed in cover and Max retained control. |
+| Carry fire through the cave | An unlit brand and forward movement left the roots intact. The fallen fir lit the carried brand. Stowing it put it out. After relighting, Max touched it to the roots and walked through the cleared side passage to CP6. A scratch copy of a legacy loadout containing only the shovel also succeeded by taking a burning branch at the trunk. |
+| Packaged strike and cave | Keyboard and mouse play from the archived CP5 preview showed the tree split, the pack flee and the view return to Max. He equipped the old brand, relit it, burned through the roots and walked into the next chamber. The resulting on-disk save was stage 6. A fresh Development process loaded that exact Shipping save with Max grounded inside, the brand lit, roots open and the tree still blocking the road. Both processes exited 0. The recorded stereo mix contains the thunder, splintering fir, impact, crackling wood and catching roots. [Watch the Shipping playthrough](../Saved/StormfallReview/Stormfall.mp4) |
+| Save compatibility | A real outlet save from the previous grate build reopened at CP5 with its carried items. The new inner-chamber save reopened at CP6 in another process with intact floor collision, a burning brand, open roots and the fallen fir still across the road. An earlier CP2 save probe also passed a disk round trip. |
+
+The Linux Development editor compiled successfully. Final Linux Shipping built, cooked, staged, packaged and archived in 3m 39s with exit 0. The archived executable matched the compiled Shipping binary byte for byte. The IoStore listing contained all 81 checked packages, including the score, snarl, storm scenery and storm audio. The retired culvert directory was absent.
+
+The Development verification used the startup map with normal movement, the inventory wheel, collision and checkpoint rules. From the project folder, these are the build and launch commands for this revision.
+
+```sh
+export UE_ROOT="$HOME/UnrealEngine-5.9-preview-2"
+UE_PROJECT="$PWD/Night_of_the_Wolves.uproject"
+"$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh" Night_of_the_WolvesEditor Linux Development \
+  "-Project=$UE_PROJECT" -NoUBA -WaitMutex
+"$UE_ROOT/Engine/Build/BatchFiles/RunUAT.sh" BuildCookRun \
+  "-project=$UE_PROJECT" -noP4 -platform=Linux -clientconfig=Shipping \
+  -build -cook -stage -pak -package -archive "-archivedirectory=$PWD/Saved/MoonlitTrail-Linux" \
+  -AdditionalCookerOptions=-CookIncremental -ubtargs=-NoUBA -utf8output -unattended
+./Saved/MoonlitTrail-Linux/Linux/Night_of_the_Wolves.sh
+```
+
+## Earlier build with the retired Singing Culvert, November 23, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Previous build’s escape-bend save | A copy of the earlier Linux CP5 save reopened at the bend with the shovel and extinguished firebrand in the bag. An unarmed Max could neither lift the rack nor walk through it. The outlet rejected an early checkpoint request. |
+| A quiet escape | The Development driver selected the shovel through the inventory wheel and used real press and release input at the grate. Four catches stayed in place and Max walked the tunnel to CP6. A separate uninterrupted run reached CP5 from the trailhead in 91.58 simulated seconds and cleared the culvert a further 38.20 seconds later. |
+| Make a mistake, go still, then keep making noise | The actual tracker approached to 10.8 cm of its inspection mark, looked through the wing and left Max alive when he stopped. One catch held after release. Continuing to scrape on another pass drew the wolf around the wing and it earned a clear pounce from 2.15 m. Automatic retry restored the original bend inventory, lowered the grate and cleared the alert. The same recovery run reached CP6 in 51.25 simulated seconds. The final ringing catch brought the tracker back to within 11.8 cm of its inspection mark before Max cleared the outlet. |
+| Outlet on disk | A fresh Development process opened the CP6 saved by the recovery run, with the shovel retained, a clear collision trace through the raised gate, and Max grounded beyond the outlet. |
+| Moonlight | Matched, rendered player cameras showed a 26% reduction in mean trailhead image luminance. The bright end of the upper sky on the cabin approach fell from 167 to 60 on a 0–255 scale. The warm hearth interior stayed close to its previous exposure. A real opening in the canopy lets the moon reach the forebay. The closed rack, spray, Max and the ribbed pipe remained readable with ordinary dynamic shadows. [Compare the trail and cabin](../Saved/CulvertReview/Trail-Moonlight.jpg) |
+| Packaged Linux input and audio | The final Shipping executable loaded an isolated copy of the old bend save. Using the mouse, WASD, inventory wheel and F, Max investigated the grate, stopped after an exposed scrape, made four timed strokes and walked from the inlet through the outlet. The file on disk contained CP6 and the game exited 0. The separate bar tap, rain, shovel scrape and ratchet were identifiable in the stereo recording. [Watch the 54-second puzzle playthrough (spoilers)](../Saved/CulvertReview/The-Singing-Culvert.mp4) |
+
+The first four cases used the normal startup map with a fixed 60 Hz clock and an isolated save directory. The lighting comparisons used the game renderer. The culvert contains original geometry and synthesized local foley. The four sounds and the authored meshes were saved through Unreal Editor. Gameplay loads the cooked assets.
+
+The Linux Development editor compiled successfully. BuildCookRun built, cooked and archived Linux Shipping with exit 0 in 3m 56s. The cooked container includes all 14 culvert assets, the moonlit sky and the startup map. To repeat the archive or play the section directly, use these commands from the project root.
+
+```sh
+"$HOME/UnrealEngine-5.9-preview-2/Engine/Build/BatchFiles/RunUAT.sh" BuildCookRun \
+  "-project=$PWD/Night_of_the_Wolves.uproject" -noP4 -platform=Linux -clientconfig=Shipping \
+  -build -cook -stage -pak -package -archive "-archivedirectory=$PWD/Saved/MoonlitTrail-Linux" \
+  -AdditionalCookerOptions=-CookIncremental -ubtargs=-NoUBA -utf8output -unattended
+./Scripts/play_culvert.sh
+```
+
+## Under the Boughs and first-leg prompts, November 23, 2026
+
+- The editor imported the new looping SoundWave with zero import errors or warnings. Two independent renders produced the same stereo master, exactly 3,072,000 frames at 48 kHz. FFmpeg measured −19.01 LUFS integrated and −4.61 dBTP. At the loop boundary the larger of the two channels’ sample jumps was 0.0023 on a full-scale range of ±1.
+- In the archived Linux Shipping game, a fresh profile went from the title through the wolf camera into a keyboard-and-mouse run until the cabin light came into view. Ten passages from the new master matched the recorded stereo output. The score entered about 8.3 seconds into the clip as control returned to Max and reached its settled level 2.25 seconds later. The title and wolf camera were free of the score. Wolf breathing matched during the approach and 31 trail-footstep contacts matched during the run. The game exited normally. [Watch the packaged opening with game audio](../Saved/TrailPerformanceReview/Forest-Pulse-Opening.mp4)
+- The Development opening test held the score through the title and wolf camera and selected the looping cue on the handoff at 10.10 seconds. With Max standing still the attack began 5.02 seconds later. Retry returned directly to Max. This test ran with rendering and audio output disabled.
+- The Development clean route reached the escape bend in 91.58 simulated seconds. The cottage recovery case opened the door first with neither supply and then with only the rope. In both cases the door opened without an inventory reminder. The incomplete inventory did not advance the checkpoint. The full recovery run released the trolley over the current, restored the near-bank inventory, tried a bad gold throw, then completed the leg. These cases checked gameplay and prompt state with rendering and audio output disabled.
+
+The Development editor build succeeded. The editor WAV import and Linux Shipping archive used the project root as the working directory. BuildCookRun finished in 3m 34s, exit 0.
+
+```sh
+ue="$HOME/UnrealEngine-5.9-preview-2/Engine"
+project="$PWD/Night_of_the_Wolves.uproject"
+"$ue/Build/BatchFiles/Linux/Build.sh" Night_of_the_WolvesEditor Linux Development \
+  "-Project=$project" -NoUBA -WaitMutex
+"$ue/Binaries/Linux/UnrealEditor-Cmd" "$project" -run=pythonscript \
+  "-script=$PWD/Scripts/score/import_moonlit_pursuit.py" -nullrhi -nosound -unattended -nop4 \
+  -abslog=/tmp/notw-forest-pulse/score-import.log
+"$ue/Build/BatchFiles/RunUAT.sh" BuildCookRun "-project=$project" -noP4 -platform=Linux \
+  -clientconfig=Shipping -build -cook -stage -pak -package -archive \
+  "-archivedirectory=$PWD/Saved/MoonlitTrail-Linux" -AdditionalCookerOptions=-CookIncremental \
+  -ubtargs=-NoUBA -utf8output -unattended
+```
+
+## Five-wolf pursuit, November 23, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Opening and escape | A fresh trail released Max after the 10.10-second opening. With no input the pressure wolf earned a clear pounce 5.02 seconds later. Its paws reached within 13 cm of Max’s chest before the card appeared. Automatic retry and a retry during the leap both restored control. A separate clean run reached CP5 in 91.58 simulated seconds. [Watch from Max’s camera in Linux Shipping](../Saved/FirstLegReview/Wolves_at_the_Trailhead.mp4) |
+| Narrow and open ground | In a collision-backed Development fixture the five possessed pawns progressed through the narrow trail with a minimum 1.45 m between centers. In the clearing, a flanker traveled 16.41 m on its approach while a second wolf kept direct pressure. The coordinator signaled the change. |
+| Ordinary far-bank route | The game’s existing creek stones and ferns separate an 8.80 m direct path and an 11.52 m alternate. Both paths passed ground and body-clearance checks. After the final cornering adjustment, the interceptor traveled 4.02 m on its chosen route and reached 3.05 m of lateral separation before Max reversed and it canceled the intercept. The recording shows the same maneuver with the earlier cornering tune. [Watch the pack on the trail and at the far-bank fork](../Saved/FirstLegReview/Five_Wolf_Pursuit.mp4) |
+| Hidden Max and blocked wolves | A solid screen hid Max while he changed position. The last sighting stayed fixed for 5.20 seconds, the tracker investigated and the pack reacquired Max after the screen came down. Closing both lanes of a separate fixture invalidated both routes. An unsupported gap also failed the route check. A separate 60-second loss of all sight and sound took the search 52.78 m beyond the frozen observation. The tracker returned to check the last-known location seven times. |
+| Three-minute pursuit and retries | Over 180 simulated seconds, pressure changed hands on each of three forced obstructions. The pack made 1,800 staggered decisions and 1,797 route requests. At most one wolf held a lethal reservation. Repeated checkpoint loads retained the same five possessed pawns and cleared transient state. A separate cold launch restored a previously saved CP2. The main route also passed an early trolley drop, a late departure, the creek camera interruption, the bandit shot and the diversion-death retry. |
+| Cottage protection | Bare hands and an extinguished firebrand each produced a doorway capture followed by a secure CP2 retry. A burning brand allowed the jump and departure, followed by a run to CP5. Another run left Max idle inside. All five stayed outside for the full 40 seconds the door held. After the bar fell, the pressure wolf cleared the pit and launched from 1.21 m away. Automatic retry put Max back inside with the bar up and all five wolves outside. |
+
+The final Linux Shipping cook reported zero errors and zero warnings. The archived binary matched the compiled Shipping target, and Unreal’s container listing found all 62 assets checked for the first leg, including the score, footfalls, voices and cable hardware. A fresh disposable-profile launch ran the title, chase, pounce, death card and retry. A second standalone run resumed a copy of CP3, cast the rope, rode across, watched the wolves and walked off the far platform. Its save advanced to CP4. Both Shipping processes exited normally. The pursuit comparison uses a Development observation camera and brighter review exposure so the dark wolves remain visible through the trees.
+
+The [pack implementation and tuning guide](WOLF_PACK.md) lists the live debug view and repeatable Development checks.
+
+## Voices, Max, the robbery and the trolley, November 23, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Actor performances | All six re-recorded voices matched the captured game audio. The hermit’s warning grew from 1.53 to 2.81 seconds and its median voiced pitch dropped from about 152 to 97 Hz. In a rendered run the hermit finished his plea before he fell, and the bandit’s three lines played in sequence before the pack reached him. The 50 Hz mouth data fitted each mastered clip. All 26 scripted words were recovered from the isolated masters. The bandit’s accent and both performances’ dramatic effect are listening judgments. [Hear the lines in the game](../Saved/VoiceReview/In-game-dialogue-Revised.wav) |
+| Digging and running | Ordinary Shipping input produced the three two-handed spade strokes, displaced earth and opened the hollow. The spade stayed equipped. The Shipping mix matched distinct trail-footstep recordings while Max ran. Recorded Shipping output independently matched timber hits while Max ran inside the cabin. Ground-contact logging selected wood on both trolley decks and stopped while Max was on the cable. [Watch Max run and dig with game sound](../Saved/FirstLegReview/Max_Dig_and_Footfalls.mp4) |
+| Gold | The Shipping HUD read “F  Throw gold” when facing the bandit and when looking back down the road. The naturally lit clearing had no target marker. The native recovery case retained the pouch on a bad aim, spent it on a successful throw and restored exactly one on retry. |
+| Cableway | In Shipping, a normal jump under the bare hook fell short. The saddle is about 4 m above the deck and Max’s jump lifts him 1.28 m. He cast the rope overhead with F, gripped the low sling, crossed and dismounted on the far planks. [Watch the jump, cast and ride](../Saved/TrailPolishReview/Trolley-Cast.mp4) |
+| Score handoff | The 108 BPM cue is a 71.11-second original loop. A waveform match against the packaged stereo mix found its entry as control returned and its fade up over the following two seconds. Title and wolf POV samples had no matching score. [Watch the opening with the new score](../Saved/TrailPerformanceReview/Opening.mp4) |
+
+The Editor and Shipping verification runs used the source engine at `$HOME/UnrealEngine-5.9-preview-2`. These commands run from the project root.
+
+```sh
+export UE_ROOT="$HOME/UnrealEngine-5.9-preview-2"
+UE_PROJECT="$PWD/Night_of_the_Wolves.uproject"
+"$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh" Night_of_the_WolvesEditor Linux Development -Project="$UE_PROJECT" -WaitMutex -NoUBA
+"$UE_ROOT/Engine/Build/BatchFiles/RunUAT.sh" BuildCookRun \
+  -project="$UE_PROJECT" -noP4 -platform=Linux -clientconfig=Shipping \
+  -build -cook -stage -pak -package -archive -archivedirectory="$PWD/Saved/MoonlitTrail-Linux" \
+  -AdditionalCookerOptions=-CookIncremental -ubtargs=-NoUBA -utf8output -unattended
+"$PWD/Saved/MoonlitTrail-Linux/Linux/Night_of_the_Wolves.sh" -NoTrailSave
+```
+
+## Creek lookback and pursuit score, November 23, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Fresh trail | The opening test observed the title dissolve and wolf camera for 10.10 seconds. Max had 5.02 seconds before the first idle pounce. In Linux Shipping, the captured stereo mix first matched the music at the handoff, reaching the configured level over 2.2 seconds as Max ran down the trail. Earlier title and wolf-camera audio had no matching music. [Watch the opening with game audio](../Saved/CreekScoreReview/Opening-Score.mp4) |
+| Dismount and handback | Both a moving release and a parked release reached the far planks. The live lead wolf stopped at the broken span for about 1.5 seconds, then moved downstream and across the channel. The view returned to Max with movement and mouse look restored. The clean route continued through the bandit to the final checkpoint in 95.47 simulated seconds. |
+| Retry during the shot | A separate run retried while the wolves were hesitating. The far-bank checkpoint restored Max’s camera and controls, with the rope still attached to the trolley. In Shipping, choosing Retry Checkpoint from the pause menu during the wide shot also returned immediately to Max on the far bank, and he walked onto the road. The regular recovery run passed the current death and subsequent bandit retries. |
+| Music loop and retries | A sound-enabled Development run resumed an older near-bank save and idled through two deaths and restores. The stereo output matched the master across its 72-second loop boundary, including the returning opening phrase. The score kept its place through both retries. |
+| Packaged creek | Keyboard and mouse dismounted the trolley, watched all three wolves reach open water, and walked Max off the landing after the handback. A separate cold launch from an older far-bank save gave control directly to Max. Both exited normally. The final Linux cook reported zero errors and warnings, and the archived Shipping executable matched the compiled binary. [Watch the far-bank lookback with game audio](../Saved/CreekScoreReview/Creek-Lookback.mp4) |
+
+## Logging cableway at the creek, November 22, 2026
+
+From the project directory, `./Saved/CablewayReview/Play-Crossing.sh` starts the packaged game at the near bank. Each launch gets a disposable copy of the earned creek checkpoint.
+
+| Case | Observed result |
+| --- | --- |
+| Loading stage | The near-bank checkpoint from the previous Linux build initially overlapped the new ramp. Shortening the ramp cleared the saved spawn. Normal keyboard input from that checkpoint reached the iron eye, switched from the firebrand to the rope, threaded the sling and started the ride. |
+| Equipment and the current | The native recovery run tried the empty trolley with the firebrand, stepped away during threading and kept the rope. A completed sling spent the rope once. In Shipping, E over open water dropped Max into the current and displayed “You died.” The near bank reloaded with the empty trolley, rope in inventory and burning firebrand equipped. A second ride from that same session reached the far bank and saved. |
+| Far stop and pursuit | One native run released onto the landing while moving. Another departed with a wolf at the bank, held on at the far buffer for 1.22 seconds, then used E to dismount. The pack took the downstream water route. A later death restored the far-bank checkpoint with the trolley parked across the creek and the gold still available for the bandit. |
+| Hands, framing and footing | The final Vulkan view from the ordinary ride camera showed the complete turning wheel, both hands on the sling, Max’s boots and the far landing. After trimming the road foundation and raising the planks, both the moving and parked releases grounded the capsule 2.2 cm above the board surface. The soles met the planks in the rendered view. |
+| Full first leg | The clean Development run reached the escape checkpoint in 87.37 simulated seconds. The separate recovery run passed the interrupted knot, current death, far-side dismount, two bandit retries and final inventory checks. |
+| Linux Shipping | The creek replay launcher used a copy of a checkpoint earned with the original tree crossing. Keyboard and mouse equipped the rope, rigged the sling, rode to the far stop and dismounted onto the planks. The save advanced to the far bank. A separate cold launch of an older far-bank save restored the trolley and rope across the water, and Max walked away. Both sessions exited normally. The game audio recording contains the shackle clink and end-stop impact. [Watch the packaged crossing with sound](../Saved/CablewayReview/Crossing.mp4) · [Trolley detail](../Saved/CablewayReview/Trolley-and-Sling.jpg) |
+
+## Log cabin, separate supplies and the bandit’s takedown, November 22, 2026
+
+| Case | Observed result |
+| --- | --- |
+| Cabin and yard | Vulkan renders show the notched wall logs, overlapping roof shakes, ledged plank door and ironwork under the existing porch and fire light. The T-handled spade leans beside a hooped oak barrel and a bound hay bale. Only the spade disappears on pickup. A separate editor check measured the visible leaf against the moving door blocker at 0°, 27°, 90° and closed again. [Cabin exterior](../Saved/HomesteadReview/Cabin-Outside.jpg) · [Door](../Saved/HomesteadReview/Cabin-Door.jpg) · [Yard](../Saved/HomesteadReview/Cabin-Yard.jpg) |
+| Bare-handed knock | Normal keyboard input in Linux Shipping took and equipped the shovel and dug. Pressing E with the shovel held kept the door closed. Selecting Bare hands in the wheel changed the prompt to “E Knock.” Max knocked, watched the encounter, jumped inside and barred the door. The private CP1 save advanced to CP2. The intact-cover knock and CP1 retry also passed the native recovery test. [Packaged input footage, silent](../Saved/HomesteadReview/Shipping-Shovel-and-Knock.mp4) |
+| Separate supplies | In the final Linux package, E took the sack from the worktable. A second E at the table left the rope visibly hanging on the opposite wall. Max walked to the peg and took it with a separate E. Each pickup showed its own confirmation and both names appeared separately in the wheel. The native recovery run also collected the rope first, kept the equipped firebrand and got a warning about the missing sack at the exit. The next checkpoint required both items. [Packaged pickups, silent](../Saved/HomesteadReview/Shipping-Cabin-Supplies.mp4) · [Firelit room](../Saved/HomesteadReview/Cabin-Room.jpg) |
+| Bandit | In the Vulkan recording the pack was about 5.2 m from the bandit when he reacted. The close-up showed the change from greed to alarm. The view widened from 31° to 57° as the lead wolf leapt and the flankers closed. The stereo mix contained the Wilhelm scream at contact. His chest settled 21 cm above the ground. The camera and input returned to Max after the struggle. An independent Shipping run used keyboard and mouse to throw the sack, watch the attack, resume sprinting and advance a private CP4 save to CP5. [Bandit takedown with game audio](../Saved/HomesteadReview/Bandit-Takedown.mp4) |
+| Progression and saves | The clean Development route reached CP5 in 87.82 simulated seconds. The failure/retry route and both guarded-door failures passed. Fresh processes restored both an earlier barred-cabin save with the shovel equipped and a newly earned save with the shovel stored and bare hands equipped. |
+| Linux Shipping | BuildCookRun built, cooked, staged and archived the game to `Saved/MoonlitTrail-Linux/Linux`. The cook reported zero errors and warnings. The archived executable matched the compiled Shipping binary and all 39 expected map, art and audio packages were present. The keyboard playthrough of the firelit room exited normally. |
+
 ## Speaking faces and the hermit’s fall, November 22, 2026
 
 [Watch the two encounters with recorded game audio](../Saved/FacialReview/Dialogue-Encounters.mp4)

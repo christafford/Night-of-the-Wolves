@@ -17,7 +17,7 @@ public:
 	UDialogueVoiceComponent();
 	void BindFace(USkeletalMeshComponent* InFace);
 	void PlayLine(USoundBase* Wave, EDialogueLine Line);
-	void SetMood(float Anger, float Interest);
+	void SetMood(float Anger, float Interest, float Fear = 0.f);
 	void ResetPerformance();
 	bool IsDelivering() const { return ActiveLine != EDialogueLine::None; }
 	virtual void TickComponent(float Dt, ELevelTick TickType, FActorComponentTickFunction* TickFunction) override;
@@ -26,6 +26,7 @@ private:
 	// Linux mixer's source cursor precedes the audio reaching the output device.
 	UPROPERTY(EditAnywhere, Config, Category="Dialogue", meta=(ClampMin="0", ClampMax="0.5", Units="s"))
 	float OutputLatency = 0.f;
+	float FearWeight = 0.f, FearTarget = 0.f;
 	UPROPERTY(Transient) TObjectPtr<USkeletalMeshComponent> Face;
 	TWeakObjectPtr<UDialogueCameraModifier> Shot;
 	EDialogueLine ActiveLine = EDialogueLine::None;

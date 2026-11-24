@@ -20,8 +20,8 @@ CLAUSES = {
     "HermitWarning": [(0., "stay away from my door")],
     "HermitShout": [(0., "i warned you")],
     "HermitPit": [(0., "get me out of here")],
-    "BanditDemand": [(0., "hands up"), (.82, "don't move")],
-    "BanditGold": [(0., "the bag"), (.82, "put it down"), (1.85, "slowly")],
+    "BanditDemand": [(0., "hands up"), (1.38, "don't move")],
+    "BanditGold": [(0., "the bag"), (1.26, "put it down"), (3.01, "slowly")],
     "BanditStay": [(0., "stay right there")],
 }
 

@@ -143,7 +143,17 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 		if(Move(FVector(2350,197,0))) { UseEquipped(); if(DigElapsed>=0) ++TestStep; }
 		break;
 	case 6:
-		if(bPitDug && Move(FVector(2350,202,0))) { Interact(); if(bHermitReacting) ++TestStep; }
+		if(!bPitDug || !Move(FVector(2350,202,0))) break;
+		if (!Inventory.Equipped.IsNone())
+		{
+			Interact();
+			if (bHermitReacting || bDoorOpen || Target(Pawn,false)!=ETarget::HandsFull)
+			{ Fail(TEXT("a held tool allowed a knock")); return; }
+			if (auto* PC=Cast<ANight_of_the_WolvesPlayerController>(Pawn.GetController())) PC->RequestTestEquip(NAME_None);
+			break;
+		}
+		Interact();
+		if(bHermitReacting) ++TestStep;
 		break;
 	case 7: if(bHermitTrapped && Move(FVector(2010,0,0))) ++TestStep; break;
 	case 8:
@@ -154,22 +164,43 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 			++TestStep;
 		}
 		break;
-	case 9: if(Move(FVector(2570,0,0))) { Interact(); if(Checkpoint==2) ++TestStep; } break;
+	case 9:
+		if (Move(FVector(2570,0,0)))
+		{
+			Interact();
+			if (Checkpoint==2) TestStep=bRecoveryTest ? 30 : 10;
+		}
+		break;
 	case 10:
 		if(bCottageTest){
 			UE_LOG(LogTemp,Display,TEXT("M3 SELFTEST PASSED: moved, equipped shovel, cleared hollow, trapped hermit, barred door in %.2fs"),TestElapsed);
 			FPlatformMisc::RequestExit(false);return;
 		}
-		if(bRecoveryTest && !bWarnedTable) { TestStep=30; break; }
 		if(bSkipBrand) { ++TestStep; break; }
 		// Take the firebrand first so the supply pickup exercises equipment preservation.
 		if(Move(FVector(2950,130,0))) { Interact(); if(Inventory.bBurning) ++TestStep; } break;
 	case 11:
-		if(Move(FVector(2800,-130,0))) { Interact(); if(Inventory.Has(TEXT("Gold")) && Inventory.Has(TEXT("Rope")) && (bSkipBrand ? !Inventory.Has(TEXT("Firebrand")) : Inventory.bBurning)) ++TestStep; }
-		break;
 	case 12:
-		TestStep=bRecoveryTest ? 32 : (bDoorTest && DoorChallengeAttempt<2 ? 40 : 14);
+	{
+		const bool bFirstPickup = TestStep == 11;
+		const bool bTakeGold = bFirstPickup != bRecoveryTest;
+		const FName Item = bTakeGold ? TEXT("Gold") : TEXT("Rope");
+		const FName Other = bTakeGold ? TEXT("Rope") : TEXT("Gold");
+		const FVector Stand = bTakeGold ? FVector(2800,-130,0) : FVector(3090,-84,0);
+		if (!Move(Stand)) break;
+		const FName Equipment = Inventory.Equipped;
+		Interact();
+		Interact(); // A second press at the same prop cannot grant its counterpart.
+		if (!Inventory.Has(Item) || Inventory.Has(Other) == bFirstPickup ||
+			Inventory.Equipped != Equipment || Inventory.bBurning == bSkipBrand)
+		{ Fail(TEXT("independent cabin pickup or held equipment")); return; }
+		if (bFirstPickup && CommitCheckpoint(3,P,Pawn.GetActorRotation()))
+		{ Fail(TEXT("CP3 accepted one supply")); return; }
+		UE_LOG(LogTemp,Display,TEXT("COTTAGE PICKUP: took %s, %s in pack=%d"),*Item.ToString(),*Other.ToString(),Inventory.Has(Other));
+		if (bFirstPickup) TestStep = bRecoveryTest ? 26 : 12;
+		else TestStep = bRecoveryTest ? 32 : (bDoorTest && DoorChallengeAttempt<2 ? 40 : 14);
 		break;
+	}
 	case 40:
 		if (!Move(FVector(2575,0,0))) break;
 		Pawn.GetController()->SetControlRotation(FRotator(-8,180,0));
@@ -225,7 +256,7 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 			Move(FVector(2325,0,0));
 			break;
 		}
-		if (Checkpoint!=2 || Inventory.Items.Num()!=1 || Inventory.Equipped!=TEXT("Shovel") ||
+		if (Checkpoint!=2 || Inventory.Items.Num()!=1 || !Inventory.Has(TEXT("Shovel")) || !Inventory.Equipped.IsNone() ||
 			!IsInside(P) || !bDoorwayGuarded)
 		{ Fail(TEXT("doorway capture did not restore the barred cabin")); return; }
 		UE_LOG(LogTemp,Display,TEXT("DOORWAY TEST: %s departure intercepted; secured CP2 and starting equipment restored"),
@@ -237,9 +268,9 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 		if(!Move(FVector(2575,0,0)) || DoorRemaining > DoorEnduranceSeconds*.80f) break;
 		DamagedDoorBudget=DoorRemaining;
 		Interact();
-		if (!bDoorOpen || !bWarnedTable || NoticeRemaining<=0 || !Notice.Contains(TEXT("table")) ||
+		if (!bDoorOpen || NoticeRemaining>0 ||
 			Inventory.Has(TEXT("Rope")) || Inventory.Has(TEXT("Gold")))
-		{ Fail(TEXT("opening before supplies should warn and leave both items behind")); return; }
+		{ Fail(TEXT("opening the door should leave both supplies behind without a reminder")); return; }
 		if (CommitCheckpoint(3,P,Pawn.GetActorRotation()) || Checkpoint!=2)
 		{ Fail(TEXT("CP3 accepted without supplies")); return; }
 		++TestStep;
@@ -248,8 +279,16 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 		Interact();
 		if (bDoorOpen || !FMath::IsNearlyEqual(DoorRemaining,DamagedDoorBudget))
 		{ Fail(TEXT("reclosing damaged door changed its endurance")); return; }
-		UE_LOG(LogTemp,Display,TEXT("COTTAGE SAFEGUARDS: premature departure warned, rope and gold left for pickup, CP3 rejected, door reclosed with %.2f/%.2fs remaining"),DoorRemaining,DoorEnduranceSeconds);
+		UE_LOG(LogTemp,Display,TEXT("COTTAGE SAFEGUARDS: both supplies left for pickup, CP3 rejected, door reclosed with %.2f/%.2fs remaining"),DoorRemaining,DoorEnduranceSeconds);
 		TestStep=10;
+		break;
+	case 26:
+		if(!Move(FVector(2575,0,0))) break;
+		Interact();
+		if (!bDoorOpen || NoticeRemaining>0 || !Inventory.Has(TEXT("Rope")) || Inventory.Has(TEXT("Gold")))
+		{ Fail(TEXT("opening the door should preserve the single pickup without a reminder")); return; }
+		Interact();
+		TestStep=12;
 		break;
 	case 32:
 		if(!Move(FVector(2575,0,0))) break;
@@ -283,7 +322,7 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 			{ Fail(TEXT("relighting at hearth must reuse the brand and its remaining deterrence")); return; }
 			UE_LOG(LogTemp,Display,TEXT("COTTAGE SAFEGUARDS: extinguished via wheel, relit at hearth without duplicating brand; %.2f/%.2fs deterrence retained"),FireRemaining,FireDeterrenceSeconds);
 			RetryCheckpoint();
-			if(Checkpoint!=2 || Inventory.Items.Num()!=1 || Inventory.Equipped!=TEXT("Shovel") || !bPitDug || !bHermitTrapped || bDoorOpen || DoorRemaining!=DoorEnduranceSeconds)
+			if(Checkpoint!=2 || Inventory.Items.Num()!=1 || !Inventory.Has(TEXT("Shovel")) || !Inventory.Equipped.IsNone() || !bPitDug || !bHermitTrapped || bDoorOpen || DoorRemaining!=DoorEnduranceSeconds)
 			{ Fail(TEXT("CP2 retry"));return; }
 			TestStep=13;
 		}
@@ -294,7 +333,7 @@ void AWolfTrailGameMode::DriveTest(float Dt,APawn& Pawn)
 	case 25:
 		if(!bDoorBreached && Checkpoint==2 && bSheltered && !bDoorOpen && Inventory.Items.Num()==1)
 		{
-			UE_LOG(LogTemp,Display,TEXT("COTTAGE RECOVERY TEST PASSED: unprepared knock, CP1 retry, grouped pickups, equipment, visible door breach and second secured CP2 restore"));
+			UE_LOG(LogTemp,Display,TEXT("COTTAGE RECOVERY TEST PASSED: unprepared knock, CP1 retry, bare-hands knock, separate pickups, equipment, visible door breach and second secured CP2 restore"));
 			FPlatformMisc::RequestExit(false);
 		}
 		break;
